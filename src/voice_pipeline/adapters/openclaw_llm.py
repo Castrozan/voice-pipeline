@@ -73,8 +73,9 @@ class OpenClawCompletion:
             if not self._cancel_event.is_set():
                 logger.exception("Gateway streaming error")
         finally:
-            await self._client.aclose()
-            self._client = None
+            if self._client:
+                await self._client.aclose()
+                self._client = None
 
     async def cancel(self) -> None:
         self._cancel_event.set()

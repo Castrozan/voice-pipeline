@@ -63,6 +63,7 @@ class VoicePipeline:
         self._enabled = True
         self._running = False
         self._utterance_buffer: list[str] = []
+        self._has_pending_interim: bool = False
         self._spoken_text_buffer: str = ""
         self._speech_active = False
         self._silence_frames = 0
@@ -212,21 +213,31 @@ class VoicePipeline:
                 post_wake_text = self._wake_word_detector.extract_post_wake_word_text(event.text)
                 self._transition_to(PipelineState.LISTENING)
                 self._utterance_buffer = [post_wake_text] if post_wake_text else []
+                self._has_pending_interim = bool(post_wake_text) and not event.is_final
 
                 if event.is_final and post_wake_text:
                     await self._process_utterance()
 
         elif self._state == PipelineState.LISTENING:
             if event.is_final:
-                self._utterance_buffer.append(event.text)
+                if self._has_pending_interim:
+                    self._utterance_buffer[-1] = event.text
+                    self._has_pending_interim = False
+                else:
+                    self._utterance_buffer.append(event.text)
                 await self._process_utterance()
             else:
-                self._utterance_buffer.append(event.text)
+                if self._has_pending_interim:
+                    self._utterance_buffer[-1] = event.text
+                else:
+                    self._utterance_buffer.append(event.text)
+                    self._has_pending_interim = True
 
         elif self._state == PipelineState.CONVERSING:
             self._cancel_conversation_window()
             self._transition_to(PipelineState.LISTENING)
             self._utterance_buffer = [event.text]
+            self._has_pending_interim = not event.is_final
 
             if event.is_final:
                 await self._process_utterance()
@@ -327,6 +338,7 @@ class VoicePipeline:
     def _reset_to_ambient(self) -> None:
         self._state = PipelineState.AMBIENT
         self._utterance_buffer.clear()
+        self._has_pending_interim = False
         self._speech_active = False
         self._silence_frames = 0
         self._cancel_conversation_window()

@@ -30,6 +30,11 @@ def main() -> None:
         datefmt="%H:%M:%S",
     )
 
+    if args.verbose:
+        logging.getLogger("websockets").setLevel(logging.INFO)
+        logging.getLogger("httpcore").setLevel(logging.INFO)
+        logging.getLogger("httpx").setLevel(logging.INFO)
+
     config = VoicePipelineConfig()
     if args.agent:
         config.default_agent = args.agent
