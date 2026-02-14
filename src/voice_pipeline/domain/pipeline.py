@@ -131,10 +131,13 @@ class VoicePipeline:
         await self._playback.stop()
 
     async def _audio_loop(self) -> None:
+        import struct
         silence_frames_for_min_silence = int(
             self._vad_min_silence_ms / (self._capture.frame_size / self._capture.sample_rate * 1000)
         )
         stt_session_active = False
+        frame_count = 0
+        max_amplitude_seen = 0
 
         async for frame in self._capture.read_frames():
             if not self._running or not self._enabled:
@@ -142,6 +145,18 @@ class VoicePipeline:
                     await self._transcriber.close_session()
                     stt_session_active = False
                 continue
+
+            frame_count += 1
+            if len(frame) >= 2:
+                samples = struct.unpack(f"<{len(frame)//2}h", frame)
+                amplitude = max(abs(s) for s in samples)
+                if amplitude > max_amplitude_seen:
+                    max_amplitude_seen = amplitude
+                if frame_count % 100 == 0:
+                    logger.debug(
+                        "Audio level: amplitude=%d max_seen=%d frames=%d",
+                        amplitude, max_amplitude_seen, frame_count,
+                    )
 
             speech_probability = self._vad.process_frame(frame)
             is_speech = speech_probability >= self._vad_threshold

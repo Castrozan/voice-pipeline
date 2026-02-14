@@ -128,12 +128,19 @@ async def _run_daemon(config: VoicePipelineConfig) -> None:
         agent_voice_map=config.agent_voices,
     )
 
-    loop = asyncio.get_event_loop()
+    shutdown_event = asyncio.Event()
+    shutdown_triggered = False
 
     def handle_signal() -> None:
-        logging.info("Received signal, shutting down...")
-        asyncio.create_task(pipeline.stop())
+        nonlocal shutdown_triggered
+        if shutdown_triggered:
+            logging.warning("Forced exit")
+            sys.exit(1)
+        shutdown_triggered = True
+        logging.info("Shutting down...")
+        shutdown_event.set()
 
+    loop = asyncio.get_event_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, handle_signal)
 
@@ -153,14 +160,20 @@ async def _run_daemon(config: VoicePipelineConfig) -> None:
                     pipeline.enabled,
                 )
 
+    pipeline_task = asyncio.create_task(pipeline.run())
+    control_task = asyncio.create_task(control_loop())
+
     try:
-        await asyncio.gather(
-            pipeline.run(),
-            control_loop(),
-        )
+        await shutdown_event.wait()
     finally:
+        pipeline_task.cancel()
+        control_task.cancel()
+        try:
+            await asyncio.wait_for(pipeline_task, timeout=3.0)
+        except (asyncio.CancelledError, asyncio.TimeoutError):
+            pass
+        try:
+            await asyncio.wait_for(control_task, timeout=1.0)
+        except (asyncio.CancelledError, asyncio.TimeoutError):
+            pass
         await control.stop()
-
-
-if __name__ == "__main__":
-    main()

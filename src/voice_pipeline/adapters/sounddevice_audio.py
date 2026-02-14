@@ -65,7 +65,6 @@ class SounddeviceCapture:
             self._stream = None
         if self._queue:
             self._queue.close()
-            await self._queue.async_q.join()
             self._queue = None
 
     async def read_frames(self) -> AsyncIterator[bytes]:
