@@ -27,7 +27,7 @@ class VoicePipelineConfig(BaseSettings):
 
     capture_device: str = "echo-cancel-source"
     sample_rate: int = 16000
-    frame_duration_ms: int = 30
+    frame_duration_ms: int = 16
 
     barge_in_enabled: bool = True
 

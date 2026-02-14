@@ -161,6 +161,9 @@ class VoicePipeline:
             speech_probability = self._vad.process_frame(frame)
             is_speech = speech_probability >= self._vad_threshold
 
+            if frame_count % 100 == 0:
+                logger.debug("VAD prob=%.4f threshold=%.2f speech=%s", speech_probability, self._vad_threshold, is_speech)
+
             if is_speech:
                 self._silence_frames = 0
 
