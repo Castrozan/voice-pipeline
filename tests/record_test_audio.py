@@ -20,13 +20,15 @@ FRAME_SAMPLES = int(SAMPLE_RATE * FRAME_DURATION_MS / 1000)
 
 CLIPS = {
     "silence_3s": ("Stay quiet for 3 seconds", 3),
-    "wake_jarvis_weather": ("Say: 'Jarvis, what's the weather like today?'", 5),
+    "wake_jarvis_weather": ("Say: 'Apple, Jarvis, what's the weather like today?'", 5),
     "silence_2s": ("Stay quiet for 2 seconds", 2),
-    "wake_robson_command": ("Say: 'Robson, turn off the lights.'", 5),
-    "thinking_pause": ("Say: 'Jarvis... I was wondering...' (pause 2s) '...about the weather.'", 8),
-    "whisper": ("Whisper: 'Jarvis, can you hear me?'", 5),
-    "loud_speech": ("Say loudly: 'JARVIS! WHAT TIME IS IT?'", 5),
-    "background_music": ("Play some music/video nearby and say: 'Jarvis, hello.'", 8),
+    "wake_robson_command": ("Say: 'Apple, Robson, turn off the lights.'", 5),
+    "thinking_pause": ("Say: 'Apple, Jarvis... I was wondering...' (pause 2s) '...about the weather.'", 8),
+    "whisper": ("Whisper: 'Apple, Jarvis, can you hear me?'", 5),
+    "loud_speech": ("Say loudly: 'APPLE, JARVIS! WHAT TIME IS IT?'", 5),
+    "background_music": ("Play normal music nearby, say: 'Apple, Jarvis, hello.'", 8),
+    "background_music_long": ("Keep normal music, say: 'Apple, Jarvis, what's the weather like today and do I need an umbrella?'", 10),
+    "background_music_loud": ("Turn music UP loud, say: 'Apple, Jarvis, hello.'", 8),
     "continuous_ramble": ("Talk continuously for 10 seconds about anything", 12),
 }
 
