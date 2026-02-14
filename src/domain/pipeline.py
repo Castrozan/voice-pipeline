@@ -1,4 +1,5 @@
 import asyncio
+import collections
 import logging
 
 from domain.state import PipelineState, validate_transition
@@ -34,6 +35,8 @@ class VoicePipeline:
         conversation_window_seconds: float = 15.0,
         barge_in_enabled: bool = True,
         agent_voice_map: dict[str, str] | None = None,
+        pre_buffer_ms: int = 300,
+        frame_duration_ms: int = 16,
     ) -> None:
         self._capture = capture
         self._playback = playback
@@ -48,6 +51,7 @@ class VoicePipeline:
         self._conversation_window_seconds = conversation_window_seconds
         self._barge_in_enabled = barge_in_enabled
         self._agent_voice_map = agent_voice_map or {}
+        self._pre_buffer_frames = int(pre_buffer_ms / frame_duration_ms)
 
         self._state = PipelineState.AMBIENT
         self._enabled = True
@@ -124,12 +128,14 @@ class VoicePipeline:
 
     async def _audio_loop(self) -> None:
         stt_session_active = False
+        pre_buffer: collections.deque[bytes] = collections.deque(maxlen=self._pre_buffer_frames)
 
         async for frame in self._capture.read_frames():
             if not self._running or not self._enabled:
                 if stt_session_active:
                     await self._transcriber.close_session()
                     stt_session_active = False
+                pre_buffer.clear()
                 continue
 
             event = self._speech_detector.process_frame(frame)
@@ -150,12 +156,17 @@ class VoicePipeline:
                 ):
                     await self._transcriber.start_session()
                     stt_session_active = True
+                    for buffered_frame in pre_buffer:
+                        await self._transcriber.send_audio(buffered_frame)
+                    pre_buffer.clear()
 
                 if stt_session_active:
                     await self._transcriber.send_audio(frame)
             else:
                 if stt_session_active:
                     await self._transcriber.send_audio(frame)
+                else:
+                    pre_buffer.append(frame)
 
     async def _transcript_loop(self) -> None:
         async for event in self._transcriber.get_transcripts():
