@@ -56,7 +56,9 @@ class VoicePipeline:
         self._has_pending_interim: bool = False
         self._spoken_text_buffer: str = ""
         self._last_interim_text: str = ""
+        self._speech_ended_event = asyncio.Event()
         self._conversation_window_task: asyncio.Task | None = None
+        self._utterance_flush_task: asyncio.Task | None = None
         self._current_tasks: list[asyncio.Task] = []
 
     @property
@@ -132,7 +134,12 @@ class VoicePipeline:
 
             event = self._speech_detector.process_frame(frame)
 
+            if event == SpeechEvent.SPEECH_END:
+                self._speech_ended_event.set()
+
             if event.is_speech:
+                self._speech_ended_event.clear()
+
                 if self._state == PipelineState.SPEAKING and self._barge_in_enabled:
                     await self._handle_barge_in()
 
@@ -179,7 +186,11 @@ class VoicePipeline:
                 self._has_pending_interim = bool(post_wake_text) and not event.is_final
 
                 if event.is_final and post_wake_text:
-                    await self._process_utterance()
+                    stripped = post_wake_text.strip()
+                    if stripped and stripped[-1] in ".!?":
+                        await self._process_utterance()
+                    else:
+                        self._schedule_utterance_flush()
 
         elif self._state == PipelineState.LISTENING:
             if event.is_final:
@@ -188,7 +199,12 @@ class VoicePipeline:
                     self._has_pending_interim = False
                 else:
                     self._utterance_buffer.append(event.text)
-                await self._process_utterance()
+
+                accumulated = " ".join(self._utterance_buffer).strip()
+                if accumulated and accumulated[-1] in ".!?":
+                    await self._process_utterance()
+                else:
+                    self._schedule_utterance_flush()
             else:
                 if self._has_pending_interim:
                     self._utterance_buffer[-1] = event.text
@@ -203,9 +219,14 @@ class VoicePipeline:
             self._has_pending_interim = not event.is_final
 
             if event.is_final:
-                await self._process_utterance()
+                accumulated = event.text.strip()
+                if accumulated and accumulated[-1] in ".!?":
+                    await self._process_utterance()
+                else:
+                    self._schedule_utterance_flush()
 
     async def _process_utterance(self) -> None:
+        self._cancel_utterance_flush()
         full_text = " ".join(self._utterance_buffer).strip()
         self._utterance_buffer.clear()
 
@@ -268,6 +289,7 @@ class VoicePipeline:
 
     async def _handle_barge_in(self) -> None:
         logger.info("Barge-in detected")
+        self._cancel_utterance_flush()
         await self._completion.cancel()
         await self._synthesizer.cancel()
         await self._playback.cancel()
@@ -276,6 +298,25 @@ class VoicePipeline:
 
         self._transition_to(PipelineState.LISTENING)
         self._utterance_buffer.clear()
+
+    def _schedule_utterance_flush(self) -> None:
+        if self._utterance_flush_task and not self._utterance_flush_task.done():
+            self._utterance_flush_task.cancel()
+        self._utterance_flush_task = asyncio.create_task(self._wait_for_speech_end_then_flush())
+
+    def _cancel_utterance_flush(self) -> None:
+        if self._utterance_flush_task and not self._utterance_flush_task.done():
+            self._utterance_flush_task.cancel()
+            self._utterance_flush_task = None
+
+    async def _wait_for_speech_end_then_flush(self) -> None:
+        try:
+            await self._speech_ended_event.wait()
+            self._speech_ended_event.clear()
+            if self._state == PipelineState.LISTENING and self._utterance_buffer:
+                await self._process_utterance()
+        except asyncio.CancelledError:
+            pass
 
     def _start_conversation_window(self) -> None:
         self._cancel_conversation_window()
@@ -304,6 +345,8 @@ class VoicePipeline:
         self._has_pending_interim = False
         self._last_interim_text = ""
         self._speech_detector.reset()
+        self._speech_ended_event.clear()
+        self._cancel_utterance_flush()
         self._cancel_conversation_window()
 
 
