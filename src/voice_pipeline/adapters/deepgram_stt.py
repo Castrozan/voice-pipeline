@@ -2,7 +2,9 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator
 
-from deepgram import DeepgramClient, LiveOptions, LiveTranscriptionEvents
+from deepgram import AsyncDeepgramClient
+from deepgram.extensions.types.sockets.listen_v1_results_event import ListenV1ResultsEvent
+from deepgram.listen.v1.socket_client import EventType
 
 from voice_pipeline.ports.transcriber import TranscriptEvent
 
@@ -13,45 +15,40 @@ class DeepgramStreamingTranscriber:
     def __init__(self, api_key: str, sample_rate: int = 16000) -> None:
         self._api_key = api_key
         self._sample_rate = sample_rate
-        self._client: DeepgramClient | None = None
-        self._connection = None
+        self._socket = None
+        self._context_manager = None
         self._transcript_queue: asyncio.Queue[TranscriptEvent] = asyncio.Queue()
         self._session_active = False
+        self._listener_task: asyncio.Task | None = None
 
     async def start_session(self) -> None:
         if self._session_active:
             await self.close_session()
 
-        self._client = DeepgramClient(self._api_key)
-        self._connection = self._client.listen.asyncwebsocket.v("1")
-
-        self._connection.on(LiveTranscriptionEvents.Transcript, self._on_transcript)
-        self._connection.on(LiveTranscriptionEvents.Error, self._on_error)
-
-        options = LiveOptions(
+        client = AsyncDeepgramClient(api_key=self._api_key)
+        self._context_manager = client.listen.v1.connect(
             model="nova-2",
             language="multi",
             encoding="linear16",
-            sample_rate=self._sample_rate,
-            channels=1,
-            interim_results=True,
+            sample_rate=str(self._sample_rate),
+            channels="1",
+            interim_results="true",
             utterance_end_ms="1500",
-            vad_events=True,
-            endpointing=300,
-            smart_format=True,
+            vad_events="true",
+            endpointing="300",
+            smart_format="true",
         )
-
-        started = await self._connection.start(options)
-        if started:
-            self._session_active = True
-            logger.info("Deepgram session started")
-        else:
-            logger.error("Failed to start Deepgram session")
+        self._socket = await self._context_manager.__aenter__()
+        self._socket.on(EventType.MESSAGE, self._on_message)
+        self._socket.on(EventType.ERROR, self._on_error)
+        self._listener_task = asyncio.create_task(self._socket.start_listening())
+        self._session_active = True
+        logger.info("Deepgram session started")
 
     async def send_audio(self, frame: bytes) -> None:
-        if self._connection and self._session_active:
+        if self._socket and self._session_active:
             try:
-                await self._connection.send(frame)
+                await self._socket._send(frame)
             except Exception:
                 logger.warning("Failed to send audio to Deepgram")
 
@@ -61,23 +58,34 @@ class DeepgramStreamingTranscriber:
             yield event
 
     async def close_session(self) -> None:
-        if self._connection and self._session_active:
+        if self._listener_task and not self._listener_task.done():
+            self._listener_task.cancel()
             try:
-                await self._connection.finish()
+                await self._listener_task
+            except (asyncio.CancelledError, Exception):
+                pass
+        self._listener_task = None
+
+        if self._context_manager:
+            try:
+                await self._context_manager.__aexit__(None, None, None)
             except Exception:
                 pass
+        self._context_manager = None
+        self._socket = None
         self._session_active = False
-        self._connection = None
         logger.info("Deepgram session closed")
 
-    async def _on_transcript(self, _self, result, **kwargs) -> None:
+    async def _on_message(self, message) -> None:
+        if not isinstance(message, ListenV1ResultsEvent):
+            return
         try:
-            transcript = result.channel.alternatives[0].transcript
+            transcript = message.channel.alternatives[0].transcript
             if not transcript:
                 return
 
-            is_final = result.is_final
-            speech_final = getattr(result, "speech_final", False)
+            is_final = message.is_final
+            speech_final = message.speech_final
 
             event = TranscriptEvent(
                 text=transcript,
@@ -87,5 +95,5 @@ class DeepgramStreamingTranscriber:
         except (IndexError, AttributeError):
             pass
 
-    async def _on_error(self, _self, error, **kwargs) -> None:
+    async def _on_error(self, error) -> None:
         logger.error("Deepgram error: %s", error)
