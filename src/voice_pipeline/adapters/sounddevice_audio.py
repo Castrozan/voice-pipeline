@@ -44,6 +44,9 @@ class SounddeviceCapture:
                 pass
 
         device = self._resolve_device()
+        if hasattr(self, "_pipewire_node_fallback"):
+            import os
+            os.environ["PIPEWIRE_NODE"] = self._pipewire_node_fallback
         self._stream = sd.InputStream(
             device=device,
             samplerate=self._sample_rate,
@@ -53,6 +56,10 @@ class SounddeviceCapture:
             callback=audio_callback,
         )
         self._stream.start()
+        if hasattr(self, "_pipewire_node_fallback"):
+            import os
+            os.environ.pop("PIPEWIRE_NODE", None)
+            del self._pipewire_node_fallback
         logger.info(
             "Audio capture started (device=%s, rate=%d, frame=%dms)",
             device, self._sample_rate, self._frame_duration_ms,
@@ -94,9 +101,8 @@ class SounddeviceCapture:
             if self._device.lower() in dev["name"].lower() and dev["max_input_channels"] > 0:
                 logger.info("Resolved device '%s' -> %d (%s)", self._device, i, dev["name"])
                 return i
-        import os
-        os.environ["PIPEWIRE_NODE"] = self._device
-        logger.info("Device '%s' not in PortAudio, set PIPEWIRE_NODE for PipeWire routing", self._device)
+        self._pipewire_node_fallback = self._device
+        logger.info("Device '%s' not in PortAudio, will use PIPEWIRE_NODE for routing", self._device)
         return None
 
 
