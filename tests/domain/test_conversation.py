@@ -1,4 +1,4 @@
-from voice_pipeline.domain.conversation import ConversationHistory
+from domain.conversation import ConversationHistory
 
 
 class TestConversationHistory:

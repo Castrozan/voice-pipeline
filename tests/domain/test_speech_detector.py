@@ -1,6 +1,6 @@
 import pytest
 
-from voice_pipeline.domain.speech_detector import SpeechDetector, SpeechEvent
+from domain.speech_detector import SpeechDetector, SpeechEvent
 from tests.conftest import FakeVad, generate_silence, FRAME_DURATION_MS
 
 

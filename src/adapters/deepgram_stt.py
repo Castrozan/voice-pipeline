@@ -6,7 +6,7 @@ from deepgram import AsyncDeepgramClient
 from deepgram.extensions.types.sockets.listen_v1_results_event import ListenV1ResultsEvent
 from deepgram.listen.v1.socket_client import EventType
 
-from voice_pipeline.ports.transcriber import TranscriptEvent
+from ports.transcriber import TranscriptEvent
 
 logger = logging.getLogger(__name__)
 

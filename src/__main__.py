@@ -4,7 +4,7 @@ import logging
 import signal
 import sys
 
-from voice_pipeline.config import VoicePipelineConfig
+from config import VoicePipelineConfig
 
 
 def main() -> None:
@@ -46,7 +46,7 @@ def main() -> None:
 
 
 async def _run_client_command(args: argparse.Namespace, config: VoicePipelineConfig) -> None:
-    from voice_pipeline.adapters.unix_control import UnixSocketControlClient
+    from adapters.unix_control import UnixSocketControlClient
 
     client = UnixSocketControlClient(socket_path=config.socket_path)
 
@@ -71,7 +71,7 @@ async def _run_client_command(args: argparse.Namespace, config: VoicePipelineCon
 
 
 async def _run_daemon(config: VoicePipelineConfig) -> None:
-    from voice_pipeline.factory import create_pipeline
+    from factory import create_pipeline
 
     pipeline, control = create_pipeline(config)
 

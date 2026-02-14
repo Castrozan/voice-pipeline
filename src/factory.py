@@ -1,16 +1,16 @@
 import logging
 
-from voice_pipeline.config import VoicePipelineConfig
-from voice_pipeline.adapters.sounddevice_audio import SounddeviceCapture, SounddevicePlayback
-from voice_pipeline.adapters.silero_vad import SileroVad
-from voice_pipeline.adapters.openclaw_llm import OpenClawCompletion
-from voice_pipeline.adapters.openai_tts import OpenAITtsSynthesizer
-from voice_pipeline.adapters.unix_control import UnixSocketControlServer
-from voice_pipeline.domain.conversation import ConversationHistory
-from voice_pipeline.domain.wake_word import WakeWordDetector
-from voice_pipeline.domain.speech_detector import SpeechDetector
-from voice_pipeline.domain.pipeline import VoicePipeline
-from voice_pipeline.ports.transcriber import TranscriberPort
+from config import VoicePipelineConfig
+from adapters.sounddevice_audio import SounddeviceCapture, SounddevicePlayback
+from adapters.silero_vad import SileroVad
+from adapters.openclaw_llm import OpenClawCompletion
+from adapters.openai_tts import OpenAITtsSynthesizer
+from adapters.unix_control import UnixSocketControlServer
+from domain.conversation import ConversationHistory
+from domain.wake_word import WakeWordDetector
+from domain.speech_detector import SpeechDetector
+from domain.pipeline import VoicePipeline
+from ports.transcriber import TranscriberPort
 
 logger = logging.getLogger(__name__)
 
@@ -25,12 +25,12 @@ def create_capture(config: VoicePipelineConfig) -> SounddeviceCapture:
 
 def create_transcriber(config: VoicePipelineConfig, deepgram_api_key: str, openai_api_key: str) -> TranscriberPort:
     if config.stt_engine == "deepgram":
-        from voice_pipeline.adapters.deepgram_stt import DeepgramStreamingTranscriber
+        from adapters.deepgram_stt import DeepgramStreamingTranscriber
         return DeepgramStreamingTranscriber(
             api_key=deepgram_api_key,
             sample_rate=config.sample_rate,
         )
-    from voice_pipeline.adapters.openai_whisper_stt import OpenAIWhisperTranscriber
+    from adapters.openai_whisper_stt import OpenAIWhisperTranscriber
     return OpenAIWhisperTranscriber(
         api_key=openai_api_key,
         sample_rate=config.sample_rate,

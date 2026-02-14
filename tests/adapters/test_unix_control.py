@@ -1,7 +1,7 @@
 import asyncio
 import pytest
 
-from voice_pipeline.adapters.unix_control import (
+from adapters.unix_control import (
     UnixSocketControlServer,
     UnixSocketControlClient,
 )

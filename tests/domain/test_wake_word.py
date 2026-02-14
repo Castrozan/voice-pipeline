@@ -1,4 +1,4 @@
-from voice_pipeline.domain.wake_word import WakeWordDetector
+from domain.wake_word import WakeWordDetector
 
 
 class TestWakeWordDetector:

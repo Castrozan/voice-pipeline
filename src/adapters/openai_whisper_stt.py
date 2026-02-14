@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator
 
 from openai import AsyncOpenAI
 
-from voice_pipeline.ports.transcriber import TranscriptEvent
+from ports.transcriber import TranscriptEvent
 
 logger = logging.getLogger(__name__)
 

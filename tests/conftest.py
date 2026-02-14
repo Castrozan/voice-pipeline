@@ -7,10 +7,10 @@ from dataclasses import dataclass
 import numpy as np
 import pytest
 
-from voice_pipeline.domain.conversation import ConversationHistory
-from voice_pipeline.domain.speech_detector import SpeechDetector
-from voice_pipeline.domain.wake_word import WakeWordDetector
-from voice_pipeline.ports.transcriber import TranscriptEvent
+from domain.conversation import ConversationHistory
+from domain.speech_detector import SpeechDetector
+from domain.wake_word import WakeWordDetector
+from ports.transcriber import TranscriptEvent
 
 
 SAMPLE_RATE = 16000

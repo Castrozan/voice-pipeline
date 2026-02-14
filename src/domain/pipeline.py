@@ -1,14 +1,14 @@
 import asyncio
 import logging
 
-from voice_pipeline.domain.state import PipelineState, validate_transition
-from voice_pipeline.domain.conversation import ConversationHistory
-from voice_pipeline.domain.wake_word import WakeWordDetector
-from voice_pipeline.domain.speech_detector import SpeechDetector, SpeechEvent
-from voice_pipeline.ports.audio import AudioCapturePort, AudioPlaybackPort
-from voice_pipeline.ports.transcriber import TranscriberPort, TranscriptEvent
-from voice_pipeline.ports.completion import CompletionPort
-from voice_pipeline.ports.synthesizer import SynthesizerPort
+from domain.state import PipelineState, validate_transition
+from domain.conversation import ConversationHistory
+from domain.wake_word import WakeWordDetector
+from domain.speech_detector import SpeechDetector, SpeechEvent
+from ports.audio import AudioCapturePort, AudioPlaybackPort
+from ports.transcriber import TranscriberPort, TranscriptEvent
+from ports.completion import CompletionPort
+from ports.synthesizer import SynthesizerPort
 
 logger = logging.getLogger(__name__)
 

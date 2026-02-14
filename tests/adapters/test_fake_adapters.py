@@ -10,7 +10,7 @@ from tests.conftest import (
     generate_silence,
     generate_sine_wave,
 )
-from voice_pipeline.ports.transcriber import TranscriptEvent
+from ports.transcriber import TranscriptEvent
 
 
 class TestFakeAudioCapture:

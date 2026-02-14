@@ -1,7 +1,7 @@
 import logging
 from enum import Enum, auto
 
-from voice_pipeline.ports.vad import VadPort
+from ports.vad import VadPort
 
 logger = logging.getLogger(__name__)
 

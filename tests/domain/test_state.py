@@ -1,6 +1,6 @@
 import pytest
 
-from voice_pipeline.domain.state import (
+from domain.state import (
     PipelineState,
     InvalidTransitionError,
     validate_transition,

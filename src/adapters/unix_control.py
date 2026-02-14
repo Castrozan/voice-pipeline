@@ -5,7 +5,7 @@ import os
 from collections.abc import AsyncIterator
 from pathlib import Path
 
-from voice_pipeline.ports.control import ControlCommand
+from ports.control import ControlCommand
 
 logger = logging.getLogger(__name__)
 
