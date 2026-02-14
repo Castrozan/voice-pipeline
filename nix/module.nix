@@ -22,6 +22,7 @@ let
     VOICE_PIPELINE_CONVERSATION_WINDOW_SECONDS=${toString cfg.conversationWindowSeconds}
     VOICE_PIPELINE_MAX_HISTORY_TURNS=${toString cfg.maxHistoryTurns}
     VOICE_PIPELINE_CAPTURE_DEVICE=${cfg.captureDevice}
+    PIPEWIRE_NODE=${cfg.captureDevice}
     VOICE_PIPELINE_BARGE_IN_ENABLED=${if cfg.bargeInEnabled then "true" else "false"}
     VOICE_PIPELINE_STT_ENGINE=${cfg.sttEngine}
     VOICE_PIPELINE_AGENT_VOICES='${agentVoicesJson}'
@@ -125,6 +126,7 @@ in
       VOICE_PIPELINE_CONVERSATION_WINDOW_SECONDS=${toString cfg.conversationWindowSeconds}
       VOICE_PIPELINE_MAX_HISTORY_TURNS=${toString cfg.maxHistoryTurns}
       VOICE_PIPELINE_CAPTURE_DEVICE=${cfg.captureDevice}
+      PIPEWIRE_NODE=${cfg.captureDevice}
       VOICE_PIPELINE_BARGE_IN_ENABLED=${if cfg.bargeInEnabled then "true" else "false"}
       VOICE_PIPELINE_STT_ENGINE=${cfg.sttEngine}
       VOICE_PIPELINE_AGENT_VOICES='${agentVoicesJson}'
