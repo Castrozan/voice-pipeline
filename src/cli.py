@@ -92,7 +92,13 @@ async def _run_client_command(args: argparse.Namespace, config: VoicePipelineCon
 
 
 async def _run_daemon(config: VoicePipelineConfig) -> None:
+    from health import run_startup_checks, has_critical_failures
     from factory import create_pipeline
+
+    results = run_startup_checks(config)
+    if has_critical_failures(results):
+        logging.error("Critical health check failures, aborting startup")
+        sys.exit(1)
 
     pipeline, control = create_pipeline(config)
 
