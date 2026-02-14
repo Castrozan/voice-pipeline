@@ -26,9 +26,9 @@ class TestSilenceGenerator:
         arr = np.frombuffer(pcm, dtype=np.int16)
         assert np.all(arr == 0)
 
-    def test_default_30ms(self):
+    def test_default_32ms(self):
         pcm = generate_silence()
-        expected_samples = int(SAMPLE_RATE * 30 / 1000)
+        expected_samples = int(SAMPLE_RATE * 32 / 1000)
         assert len(pcm) == expected_samples * 2
 
 
@@ -116,18 +116,18 @@ class TestPcmToWav:
 
 class TestSplitIntoFrames:
     def test_correct_frame_count(self):
-        pcm = generate_sine_wave(duration_ms=300)
+        pcm = generate_sine_wave(duration_ms=320)
         frames = split_into_frames(pcm)
-        expected_frames = 300 // 30
+        expected_frames = 320 // 32
         assert len(frames) == expected_frames
 
     def test_frame_size_bytes(self):
-        pcm = generate_sine_wave(duration_ms=60)
+        pcm = generate_sine_wave(duration_ms=64)
         frames = split_into_frames(pcm)
         for frame in frames:
             assert len(frame) == FRAME_SIZE * 2
 
     def test_incomplete_frames_dropped(self):
-        pcm = generate_sine_wave(duration_ms=45)
+        pcm = generate_sine_wave(duration_ms=48)
         frames = split_into_frames(pcm)
         assert len(frames) == 1

@@ -10,24 +10,6 @@ let
   agentVoicesJson = builtins.toJSON (lib.mapAttrs (_name: agentCfg: agentCfg.openaiVoice) cfg.agents);
 
   wakeWordsJson = builtins.toJSON cfg.wakeWords;
-
-  environmentFile = pkgs.writeText "voice-pipeline-env" ''
-    VOICE_PIPELINE_GATEWAY_URL=${cfg.gatewayUrl}
-    VOICE_PIPELINE_GATEWAY_TOKEN_FILE=${cfg.gatewayTokenFile}
-    VOICE_PIPELINE_DEFAULT_AGENT=${cfg.defaultAgent}
-    VOICE_PIPELINE_DEEPGRAM_API_KEY_FILE=${cfg.deepgramApiKeyFile}
-    VOICE_PIPELINE_OPENAI_API_KEY_FILE=${cfg.openaiApiKeyFile}
-    VOICE_PIPELINE_TTS_VOICE=${cfg.ttsVoice}
-    VOICE_PIPELINE_WAKE_WORDS='${wakeWordsJson}'
-    VOICE_PIPELINE_CONVERSATION_WINDOW_SECONDS=${toString cfg.conversationWindowSeconds}
-    VOICE_PIPELINE_MAX_HISTORY_TURNS=${toString cfg.maxHistoryTurns}
-    VOICE_PIPELINE_CAPTURE_DEVICE=${cfg.captureDevice}
-    PIPEWIRE_NODE=${cfg.captureDevice}
-    VOICE_PIPELINE_BARGE_IN_ENABLED=${if cfg.bargeInEnabled then "true" else "false"}
-    VOICE_PIPELINE_STT_ENGINE=${cfg.sttEngine}
-    VOICE_PIPELINE_AGENT_VOICES='${agentVoicesJson}'
-    VOICE_PIPELINE_MODEL=${cfg.model}
-  '';
 in
 {
   options.services.voice-pipeline = {

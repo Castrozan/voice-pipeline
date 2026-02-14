@@ -8,23 +8,24 @@ import numpy as np
 import pytest
 
 from voice_pipeline.domain.conversation import ConversationHistory
+from voice_pipeline.domain.speech_detector import SpeechDetector
 from voice_pipeline.domain.wake_word import WakeWordDetector
 from voice_pipeline.ports.transcriber import TranscriptEvent
 
 
 SAMPLE_RATE = 16000
-FRAME_DURATION_MS = 30
+FRAME_DURATION_MS = 32
 FRAME_SIZE = int(SAMPLE_RATE * FRAME_DURATION_MS / 1000)
 
 
-def generate_silence(duration_ms: int = 30, sample_rate: int = SAMPLE_RATE) -> bytes:
+def generate_silence(duration_ms: int = 32, sample_rate: int = SAMPLE_RATE) -> bytes:
     num_samples = int(sample_rate * duration_ms / 1000)
     return np.zeros(num_samples, dtype=np.int16).tobytes()
 
 
 def generate_sine_wave(
     frequency: float = 440.0,
-    duration_ms: int = 30,
+    duration_ms: int = 32,
     amplitude: float = 0.8,
     sample_rate: int = SAMPLE_RATE,
 ) -> bytes:
@@ -35,7 +36,7 @@ def generate_sine_wave(
 
 
 def generate_white_noise(
-    duration_ms: int = 30,
+    duration_ms: int = 32,
     amplitude: float = 0.5,
     sample_rate: int = SAMPLE_RATE,
 ) -> bytes:
@@ -295,3 +296,13 @@ def wake_word_detector():
 @pytest.fixture
 def conversation():
     return ConversationHistory(max_turns=20)
+
+
+@pytest.fixture
+def fake_speech_detector(fake_vad):
+    return SpeechDetector(
+        vad=fake_vad,
+        threshold=0.5,
+        min_silence_ms=300,
+        frame_duration_ms=FRAME_DURATION_MS,
+    )

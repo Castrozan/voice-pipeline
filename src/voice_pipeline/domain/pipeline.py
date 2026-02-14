@@ -1,17 +1,11 @@
 import asyncio
 import logging
-from time import time
 
 from voice_pipeline.domain.state import PipelineState, validate_transition
-from voice_pipeline.domain.events import (
-    BargeIn,
-    ConversationWindowExpired,
-    WakeWordDetected,
-)
 from voice_pipeline.domain.conversation import ConversationHistory
 from voice_pipeline.domain.wake_word import WakeWordDetector
+from voice_pipeline.domain.speech_detector import SpeechDetector, SpeechEvent
 from voice_pipeline.ports.audio import AudioCapturePort, AudioPlaybackPort
-from voice_pipeline.ports.vad import VadPort
 from voice_pipeline.ports.transcriber import TranscriberPort, TranscriptEvent
 from voice_pipeline.ports.completion import CompletionPort
 from voice_pipeline.ports.synthesizer import SynthesizerPort
@@ -30,31 +24,27 @@ class VoicePipeline:
         self,
         capture: AudioCapturePort,
         playback: AudioPlaybackPort,
-        vad: VadPort,
         transcriber: TranscriberPort,
         completion: CompletionPort,
         synthesizer: SynthesizerPort,
+        speech_detector: SpeechDetector,
         wake_word_detector: WakeWordDetector,
         conversation: ConversationHistory,
         default_agent: str = "jarvis",
-        vad_threshold: float = 0.5,
-        vad_min_silence_ms: int = 300,
         conversation_window_seconds: float = 15.0,
         barge_in_enabled: bool = True,
         agent_voice_map: dict[str, str] | None = None,
     ) -> None:
         self._capture = capture
         self._playback = playback
-        self._vad = vad
         self._transcriber = transcriber
         self._completion = completion
         self._synthesizer = synthesizer
+        self._speech_detector = speech_detector
         self._wake_word_detector = wake_word_detector
         self._conversation = conversation
 
         self._agent = default_agent
-        self._vad_threshold = vad_threshold
-        self._vad_min_silence_ms = vad_min_silence_ms
         self._conversation_window_seconds = conversation_window_seconds
         self._barge_in_enabled = barge_in_enabled
         self._agent_voice_map = agent_voice_map or {}
@@ -65,8 +55,6 @@ class VoicePipeline:
         self._utterance_buffer: list[str] = []
         self._has_pending_interim: bool = False
         self._spoken_text_buffer: str = ""
-        self._speech_active = False
-        self._silence_frames = 0
         self._conversation_window_task: asyncio.Task | None = None
         self._current_tasks: list[asyncio.Task] = []
 
@@ -132,13 +120,7 @@ class VoicePipeline:
         await self._playback.stop()
 
     async def _audio_loop(self) -> None:
-        import struct
-        silence_frames_for_min_silence = int(
-            self._vad_min_silence_ms / (self._capture.frame_size / self._capture.sample_rate * 1000)
-        )
         stt_session_active = False
-        frame_count = 0
-        max_amplitude_seen = 0
 
         async for frame in self._capture.read_frames():
             if not self._running or not self._enabled:
@@ -147,31 +129,9 @@ class VoicePipeline:
                     stt_session_active = False
                 continue
 
-            frame_count += 1
-            if len(frame) >= 2:
-                samples = struct.unpack(f"<{len(frame)//2}h", frame)
-                amplitude = max(abs(s) for s in samples)
-                if amplitude > max_amplitude_seen:
-                    max_amplitude_seen = amplitude
-                if frame_count % 100 == 0:
-                    logger.debug(
-                        "Audio level: amplitude=%d max_seen=%d frames=%d",
-                        amplitude, max_amplitude_seen, frame_count,
-                    )
+            event = self._speech_detector.process_frame(frame)
 
-            speech_probability = self._vad.process_frame(frame)
-            is_speech = speech_probability >= self._vad_threshold
-
-            if frame_count % 100 == 0:
-                logger.debug("VAD prob=%.4f threshold=%.2f speech=%s", speech_probability, self._vad_threshold, is_speech)
-
-            if is_speech:
-                self._silence_frames = 0
-
-                if not self._speech_active:
-                    self._speech_active = True
-                    logger.debug("Speech detected (prob=%.2f)", speech_probability)
-
+            if event.is_speech:
                 if self._state == PipelineState.SPEAKING and self._barge_in_enabled:
                     await self._handle_barge_in()
 
@@ -186,11 +146,6 @@ class VoicePipeline:
                 if stt_session_active:
                     await self._transcriber.send_audio(frame)
             else:
-                self._silence_frames += 1
-                if self._speech_active and self._silence_frames >= silence_frames_for_min_silence:
-                    self._speech_active = False
-                    logger.debug("Speech ended (silence frames=%d)", self._silence_frames)
-
                 if stt_session_active:
                     await self._transcriber.send_audio(frame)
 
@@ -339,8 +294,7 @@ class VoicePipeline:
         self._state = PipelineState.AMBIENT
         self._utterance_buffer.clear()
         self._has_pending_interim = False
-        self._speech_active = False
-        self._silence_frames = 0
+        self._speech_detector.reset()
         self._cancel_conversation_window()
 
 

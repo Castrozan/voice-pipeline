@@ -71,67 +71,9 @@ async def _run_client_command(args: argparse.Namespace, config: VoicePipelineCon
 
 
 async def _run_daemon(config: VoicePipelineConfig) -> None:
-    from voice_pipeline.adapters.sounddevice_audio import SounddeviceCapture, SounddevicePlayback
-    from voice_pipeline.adapters.silero_vad import SileroVad
-    from voice_pipeline.adapters.openclaw_llm import OpenClawCompletion
-    from voice_pipeline.adapters.openai_tts import OpenAITtsSynthesizer
-    from voice_pipeline.adapters.unix_control import UnixSocketControlServer
-    from voice_pipeline.domain.conversation import ConversationHistory
-    from voice_pipeline.domain.wake_word import WakeWordDetector
-    from voice_pipeline.domain.pipeline import VoicePipeline
+    from voice_pipeline.factory import create_pipeline
 
-    gateway_token = config.read_secret(config.gateway_token_file)
-    openai_api_key = config.read_secret(config.openai_api_key_file)
-    deepgram_api_key = config.read_secret(config.deepgram_api_key_file)
-
-    capture = SounddeviceCapture(
-        device=config.capture_device,
-        sample_rate=config.sample_rate,
-        frame_duration_ms=config.frame_duration_ms,
-    )
-    playback = SounddevicePlayback(sample_rate=24000)
-    vad = SileroVad(model_path=config.vad_model_path, sample_rate=config.sample_rate)
-
-    if config.stt_engine == "deepgram":
-        from voice_pipeline.adapters.deepgram_stt import DeepgramStreamingTranscriber
-        transcriber = DeepgramStreamingTranscriber(
-            api_key=deepgram_api_key,
-            sample_rate=config.sample_rate,
-        )
-    else:
-        from voice_pipeline.adapters.openai_whisper_stt import OpenAIWhisperTranscriber
-        transcriber = OpenAIWhisperTranscriber(
-            api_key=openai_api_key,
-            sample_rate=config.sample_rate,
-        )
-
-    completion = OpenClawCompletion(
-        gateway_url=config.gateway_url,
-        token=gateway_token,
-        model=config.model,
-    )
-    synthesizer = OpenAITtsSynthesizer(api_key=openai_api_key)
-    control = UnixSocketControlServer(socket_path=config.socket_path)
-
-    wake_detector = WakeWordDetector(config.wake_words)
-    conversation = ConversationHistory(max_turns=config.max_history_turns)
-
-    pipeline = VoicePipeline(
-        capture=capture,
-        playback=playback,
-        vad=vad,
-        transcriber=transcriber,
-        completion=completion,
-        synthesizer=synthesizer,
-        wake_word_detector=wake_detector,
-        conversation=conversation,
-        default_agent=config.default_agent,
-        vad_threshold=config.vad_threshold,
-        vad_min_silence_ms=config.vad_min_silence_ms,
-        conversation_window_seconds=config.conversation_window_seconds,
-        barge_in_enabled=config.barge_in_enabled,
-        agent_voice_map=config.agent_voices,
-    )
+    pipeline, control = create_pipeline(config)
 
     shutdown_event = asyncio.Event()
     shutdown_triggered = False
