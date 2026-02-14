@@ -16,7 +16,7 @@ dependencies = [
 ]
 
 [project.scripts]
-voice-pipeline = "__main__:main"
+voice-pipeline = "cli:main"
 
 [build-system]
 requires = ["setuptools>=75"]
@@ -24,7 +24,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
-py-modules = ["__init__", "__main__", "config", "factory"]
+py-modules = ["__init__", "cli", "config", "factory"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
