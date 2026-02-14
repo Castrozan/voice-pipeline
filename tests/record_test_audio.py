@@ -3,7 +3,6 @@ import os
 import sys
 import time
 import wave
-import struct
 from pathlib import Path
 
 import numpy as np
@@ -19,18 +18,17 @@ SAMPLE_RATE = 16000
 FRAME_DURATION_MS = 16
 FRAME_SAMPLES = int(SAMPLE_RATE * FRAME_DURATION_MS / 1000)
 
-SCRIPT = [
-    ("silence_3s", "Stay quiet for 3 seconds", 3),
-    ("wake_jarvis_weather", "Say: 'Jarvis, what's the weather like today?'", 5),
-    ("silence_2s", "Stay quiet for 2 seconds", 2),
-    ("wake_robson_command", "Say: 'Robson, turn off the lights.'", 5),
-    ("silence_2s_2", "Stay quiet for 2 seconds", 2),
-    ("thinking_pause", "Say: 'Jarvis... I was wondering...' (pause 2s) '...about the weather.'", 8),
-    ("whisper", "Whisper: 'Jarvis, can you hear me?'", 5),
-    ("loud_speech", "Say loudly: 'JARVIS! WHAT TIME IS IT?'", 5),
-    ("background_music", "Play some music/video nearby and say: 'Jarvis, hello.'", 8),
-    ("continuous_ramble", "Talk continuously for 10 seconds about anything", 12),
-]
+CLIPS = {
+    "silence_3s": ("Stay quiet for 3 seconds", 3),
+    "wake_jarvis_weather": ("Say: 'Jarvis, what's the weather like today?'", 5),
+    "silence_2s": ("Stay quiet for 2 seconds", 2),
+    "wake_robson_command": ("Say: 'Robson, turn off the lights.'", 5),
+    "thinking_pause": ("Say: 'Jarvis... I was wondering...' (pause 2s) '...about the weather.'", 8),
+    "whisper": ("Whisper: 'Jarvis, can you hear me?'", 5),
+    "loud_speech": ("Say loudly: 'JARVIS! WHAT TIME IS IT?'", 5),
+    "background_music": ("Play some music/video nearby and say: 'Jarvis, hello.'", 8),
+    "continuous_ramble": ("Talk continuously for 10 seconds about anything", 12),
+}
 
 
 def save_wav(path: Path, pcm_data: bytes, sample_rate: int = SAMPLE_RATE) -> None:
@@ -68,7 +66,6 @@ def analyze_recording(pcm_data: bytes, config: VoicePipelineConfig) -> dict:
     max_prob = 0.0
     speech_starts = 0
     speech_ends = 0
-    probs = []
 
     for i in range(0, len(pcm_data), bytes_per_frame):
         frame = pcm_data[i : i + bytes_per_frame]
@@ -77,7 +74,6 @@ def analyze_recording(pcm_data: bytes, config: VoicePipelineConfig) -> dict:
         total_frames += 1
         event = detector.process_frame(frame)
         prob = vad.process_frame(frame)
-        probs.append(prob)
 
         if event.is_speech:
             speech_frames += 1
@@ -100,27 +96,53 @@ def analyze_recording(pcm_data: bytes, config: VoicePipelineConfig) -> dict:
     }
 
 
-def main() -> None:
-    config = VoicePipelineConfig()
+def record_one(clip_name: str, config: VoicePipelineConfig) -> None:
+    if clip_name not in CLIPS:
+        print(f"Unknown clip: {clip_name}")
+        print(f"Available: {', '.join(CLIPS.keys())}")
+        sys.exit(1)
 
+    instruction, duration = CLIPS[clip_name]
     RECORDINGS_DIR.mkdir(exist_ok=True)
+    os.environ["PIPEWIRE_NODE"] = config.capture_device
 
+    print(f"[{clip_name}] {instruction}")
+    print(f"  Recording {duration}s in 3...")
+    time.sleep(1)
+    print(f"  2...")
+    time.sleep(1)
+    print(f"  1...")
+    time.sleep(1)
+    print(f"  >>> RECORDING <<<")
+
+    pcm = record_clip(duration, config.capture_gain)
+
+    wav_path = RECORDINGS_DIR / f"{clip_name}.wav"
+    save_wav(wav_path, pcm)
+
+    os.environ.pop("PIPEWIRE_NODE", None)
+
+    analysis = analyze_recording(pcm, config)
+    print(f"  Saved: {wav_path}")
+    print(f"  rms={analysis['rms']:.0f} peak={analysis['peak']} "
+          f"speech={analysis['speech_pct']:.0f}% "
+          f"max_prob={analysis['max_prob']:.4f} "
+          f"starts={analysis['speech_starts']} ends={analysis['speech_ends']}")
+
+
+def record_all(config: VoicePipelineConfig) -> None:
+    RECORDINGS_DIR.mkdir(exist_ok=True)
     os.environ["PIPEWIRE_NODE"] = config.capture_device
 
     print("=" * 60)
     print("VOICE PIPELINE - AUDIO RECORDING TEST")
     print("=" * 60)
-    print(f"Device: {config.capture_device}")
-    print(f"Gain: {config.capture_gain}x")
-    print(f"VAD threshold: {config.vad_threshold}")
-    print(f"Frame: {FRAME_DURATION_MS}ms ({FRAME_SAMPLES} samples)")
-    print(f"Recordings saved to: {RECORDINGS_DIR}")
+    print(f"Device: {config.capture_device} | Gain: {config.capture_gain}x")
+    print(f"Recordings: {RECORDINGS_DIR}")
     print("=" * 60)
     print()
 
-    results = []
-
-    for clip_name, instruction, duration in SCRIPT:
+    for clip_name, (instruction, duration) in CLIPS.items():
         print(f"[{clip_name}] {instruction}")
         print(f"  Recording {duration}s in 3...")
         time.sleep(1)
@@ -131,35 +153,44 @@ def main() -> None:
         print(f"  >>> RECORDING <<<")
 
         pcm = record_clip(duration, config.capture_gain)
-
         wav_path = RECORDINGS_DIR / f"{clip_name}.wav"
         save_wav(wav_path, pcm)
 
         analysis = analyze_recording(pcm, config)
-        results.append((clip_name, analysis))
-
         print(f"  rms={analysis['rms']:.0f} peak={analysis['peak']} "
-              f"speech={analysis['speech_pct']:.0f}% "
-              f"max_prob={analysis['max_prob']:.4f} "
-              f"starts={analysis['speech_starts']} ends={analysis['speech_ends']}")
+              f"speech={analysis['speech_pct']:.0f}% max_prob={analysis['max_prob']:.4f}")
         print()
 
     os.environ.pop("PIPEWIRE_NODE", None)
+    print("Done. Run: uv run pytest tests/test_recorded_audio.py -v")
 
-    print("=" * 60)
-    print("SUMMARY")
-    print("=" * 60)
-    for clip_name, analysis in results:
-        status = "OK" if analysis["speech_frames"] > 0 or "silence" in clip_name else "FAIL"
-        if "silence" in clip_name and analysis["speech_frames"] > 0:
-            status = "FAIL (false positive)"
-        print(f"  [{status:20s}] {clip_name}: "
-              f"rms={analysis['rms']:.0f} peak={analysis['peak']} "
-              f"speech={analysis['speech_pct']:.0f}% max_prob={analysis['max_prob']:.4f}")
 
-    print()
-    print(f"Recordings saved in {RECORDINGS_DIR}/")
-    print("Re-run VAD analysis without recording: uv run pytest tests/test_recorded_audio.py -v")
+def list_clips() -> None:
+    print("Available clips:")
+    for clip_name, (instruction, duration) in CLIPS.items():
+        exists = (RECORDINGS_DIR / f"{clip_name}.wav").exists()
+        status = "recorded" if exists else "missing"
+        print(f"  [{status:8s}] {clip_name} ({duration}s) — {instruction}")
+
+
+def main() -> None:
+    config = VoicePipelineConfig()
+
+    if len(sys.argv) < 2 or sys.argv[1] == "--help":
+        print("Usage:")
+        print(f"  {sys.argv[0]} <clip_name>   Record a single clip")
+        print(f"  {sys.argv[0]} all           Record all clips")
+        print(f"  {sys.argv[0]} list          List clips and status")
+        print()
+        list_clips()
+        sys.exit(0)
+
+    if sys.argv[1] == "list":
+        list_clips()
+    elif sys.argv[1] == "all":
+        record_all(config)
+    else:
+        record_one(sys.argv[1], config)
 
 
 if __name__ == "__main__":
