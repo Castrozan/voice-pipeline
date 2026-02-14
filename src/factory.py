@@ -89,6 +89,7 @@ def create_pipeline(config: VoicePipelineConfig) -> tuple[VoicePipeline, UnixSoc
         conversation_window_seconds=config.conversation_window_seconds,
         barge_in_enabled=config.barge_in_enabled,
         agent_voice_map=config.agent_voices,
+        barge_in_min_speech_ms=config.barge_in_min_speech_ms,
         frame_duration_ms=config.frame_duration_ms,
     )
 

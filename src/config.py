@@ -31,6 +31,7 @@ class VoicePipelineConfig(BaseSettings):
     frame_duration_ms: int = 16
 
     barge_in_enabled: bool = True
+    barge_in_min_speech_ms: int = 200
 
     socket_path: str = "/tmp/voice-pipeline.sock"
 

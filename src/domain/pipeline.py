@@ -36,6 +36,7 @@ class VoicePipeline:
         barge_in_enabled: bool = True,
         agent_voice_map: dict[str, str] | None = None,
         pre_buffer_ms: int = 300,
+        barge_in_min_speech_ms: int = 200,
         frame_duration_ms: int = 16,
     ) -> None:
         self._capture = capture
@@ -52,6 +53,7 @@ class VoicePipeline:
         self._barge_in_enabled = barge_in_enabled
         self._agent_voice_map = agent_voice_map or {}
         self._pre_buffer_frames = int(pre_buffer_ms / frame_duration_ms)
+        self._barge_in_min_frames = int(barge_in_min_speech_ms / frame_duration_ms)
 
         self._state = PipelineState.AMBIENT
         self._enabled = True
@@ -64,6 +66,7 @@ class VoicePipeline:
         self._conversation_window_task: asyncio.Task | None = None
         self._utterance_flush_task: asyncio.Task | None = None
         self._current_tasks: list[asyncio.Task] = []
+        self._barge_in_speech_frames: int = 0
 
     @property
     def state(self) -> PipelineState:
@@ -147,7 +150,10 @@ class VoicePipeline:
                 self._speech_ended_event.clear()
 
                 if self._state == PipelineState.SPEAKING and self._barge_in_enabled:
-                    await self._handle_barge_in()
+                    self._barge_in_speech_frames += 1
+                    if self._barge_in_speech_frames >= self._barge_in_min_frames:
+                        await self._handle_barge_in()
+                        self._barge_in_speech_frames = 0
 
                 if not stt_session_active and self._state in (
                     PipelineState.AMBIENT,
@@ -163,6 +169,7 @@ class VoicePipeline:
                 if stt_session_active:
                     await self._transcriber.send_audio(frame)
             else:
+                self._barge_in_speech_frames = 0
                 if stt_session_active:
                     await self._transcriber.send_audio(frame)
                 else:
