@@ -1,13 +1,34 @@
 import argparse
 import asyncio
 import logging
+import os
 import signal
 import sys
+from pathlib import Path
 
 from config import VoicePipelineConfig
 
+ENV_FILE_PATH = Path.home() / ".config" / "voice-pipeline" / "env"
+
+
+def _load_env_file() -> None:
+    if not ENV_FILE_PATH.exists():
+        return
+    with open(ENV_FILE_PATH) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            value = value.strip("'\"")
+            if key not in os.environ:
+                os.environ[key] = value
+
 
 def main() -> None:
+    _load_env_file()
     parser = argparse.ArgumentParser(description="Real-time voice pipeline")
     parser.add_argument("--agent", help="Default agent to use")
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose logging")
