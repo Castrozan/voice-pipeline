@@ -6,18 +6,17 @@
 }:
 let
   cfg = config.services.voice-pipeline;
-  openclaw = config.openclaw;
 
   agentVoicesJson = builtins.toJSON (lib.mapAttrs (_name: agentCfg: agentCfg.openaiVoice) cfg.agents);
 
   wakeWordsJson = builtins.toJSON cfg.wakeWords;
 
   environmentFile = pkgs.writeText "voice-pipeline-env" ''
-    VOICE_PIPELINE_GATEWAY_URL=http://localhost:${toString openclaw.gatewayPort}
-    VOICE_PIPELINE_GATEWAY_TOKEN_FILE=/run/agenix/openclaw-gateway-token
+    VOICE_PIPELINE_GATEWAY_URL=${cfg.gatewayUrl}
+    VOICE_PIPELINE_GATEWAY_TOKEN_FILE=${cfg.gatewayTokenFile}
     VOICE_PIPELINE_DEFAULT_AGENT=${cfg.defaultAgent}
-    VOICE_PIPELINE_DEEPGRAM_API_KEY_FILE=/run/agenix/deepgram-api-key
-    VOICE_PIPELINE_OPENAI_API_KEY_FILE=/run/agenix/openai-api-key
+    VOICE_PIPELINE_DEEPGRAM_API_KEY_FILE=${cfg.deepgramApiKeyFile}
+    VOICE_PIPELINE_OPENAI_API_KEY_FILE=${cfg.openaiApiKeyFile}
     VOICE_PIPELINE_TTS_VOICE=${cfg.ttsVoice}
     VOICE_PIPELINE_WAKE_WORDS=${wakeWordsJson}
     VOICE_PIPELINE_CONVERSATION_WINDOW_SECONDS=${toString cfg.conversationWindowSeconds}
@@ -32,6 +31,26 @@ in
 {
   options.services.voice-pipeline = {
     enable = lib.mkEnableOption "Voice Pipeline real-time conversational AI";
+
+    gatewayUrl = lib.mkOption {
+      type = lib.types.str;
+      default = "http://localhost:18789";
+    };
+
+    gatewayTokenFile = lib.mkOption {
+      type = lib.types.str;
+      default = "/run/agenix/openclaw-gateway-token";
+    };
+
+    deepgramApiKeyFile = lib.mkOption {
+      type = lib.types.str;
+      default = "/run/agenix/deepgram-api-key";
+    };
+
+    openaiApiKeyFile = lib.mkOption {
+      type = lib.types.str;
+      default = "/run/agenix/openai-api-key";
+    };
 
     defaultAgent = lib.mkOption {
       type = lib.types.str;
