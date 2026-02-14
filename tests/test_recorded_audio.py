@@ -17,7 +17,7 @@ MIN_SILENCE_MS = 800
 
 
 def find_recordings(clip_name: str) -> list[Path]:
-    return sorted(RECORDINGS_DIR.glob(f"{clip_name}_*.wav"))
+    return sorted(RECORDINGS_DIR.glob(f"*/{clip_name}.wav"))
 
 
 def load_recording(path: Path) -> bytes:
@@ -83,7 +83,7 @@ def parametrize_recordings(clip_name: str):
         )
     return pytest.mark.parametrize(
         "recording_path",
-        [pytest.param(p, id=p.stem) for p in paths],
+        [pytest.param(p, id=p.parent.name) for p in paths],
     )
 
 

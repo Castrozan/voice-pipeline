@@ -98,8 +98,12 @@ def analyze_recording(pcm_data: bytes, config: VoicePipelineConfig) -> dict:
     }
 
 
-def recording_filename(clip_name: str, mic: str) -> str:
-    return f"{clip_name}_{mic}.wav"
+def recording_dir(mic: str) -> Path:
+    return RECORDINGS_DIR / mic
+
+
+def recording_filename(clip_name: str) -> str:
+    return f"{clip_name}.wav"
 
 
 def record_one(clip_name: str, mic: str, config: VoicePipelineConfig) -> None:
@@ -109,7 +113,8 @@ def record_one(clip_name: str, mic: str, config: VoicePipelineConfig) -> None:
         sys.exit(1)
 
     instruction, duration = CLIPS[clip_name]
-    RECORDINGS_DIR.mkdir(exist_ok=True)
+    mic_dir = recording_dir(mic)
+    mic_dir.mkdir(parents=True, exist_ok=True)
     os.environ["PIPEWIRE_NODE"] = config.capture_device
 
     print(f"[{clip_name}] ({mic} mic) {instruction}")
@@ -123,8 +128,7 @@ def record_one(clip_name: str, mic: str, config: VoicePipelineConfig) -> None:
 
     pcm = record_clip(duration, config.capture_gain)
 
-    filename = recording_filename(clip_name, mic)
-    wav_path = RECORDINGS_DIR / filename
+    wav_path = mic_dir / recording_filename(clip_name)
     save_wav(wav_path, pcm)
 
     os.environ.pop("PIPEWIRE_NODE", None)
@@ -138,14 +142,15 @@ def record_one(clip_name: str, mic: str, config: VoicePipelineConfig) -> None:
 
 
 def record_all(mic: str, config: VoicePipelineConfig) -> None:
-    RECORDINGS_DIR.mkdir(exist_ok=True)
+    mic_dir = recording_dir(mic)
+    mic_dir.mkdir(parents=True, exist_ok=True)
     os.environ["PIPEWIRE_NODE"] = config.capture_device
 
     print("=" * 60)
     print(f"VOICE PIPELINE - AUDIO RECORDING ({mic} mic)")
     print("=" * 60)
     print(f"Device: {config.capture_device} | Gain: {config.capture_gain}x")
-    print(f"Recordings: {RECORDINGS_DIR}")
+    print(f"Recordings: {mic_dir}")
     print("=" * 60)
     print()
 
@@ -160,8 +165,7 @@ def record_all(mic: str, config: VoicePipelineConfig) -> None:
         print(f"  >>> RECORDING <<<")
 
         pcm = record_clip(duration, config.capture_gain)
-        filename = recording_filename(clip_name, mic)
-        wav_path = RECORDINGS_DIR / filename
+        wav_path = mic_dir / recording_filename(clip_name)
         save_wav(wav_path, pcm)
 
         analysis = analyze_recording(pcm, config)
@@ -176,9 +180,9 @@ def record_all(mic: str, config: VoicePipelineConfig) -> None:
 def transcribe_clip(filename: str) -> None:
     wav_path = RECORDINGS_DIR / filename
     if not wav_path.exists():
-        matching = list(RECORDINGS_DIR.glob(f"{filename}*.wav"))
+        matching = list(RECORDINGS_DIR.glob(f"**/{filename}*.wav"))
         if not matching:
-            print(f"Recording not found: {wav_path}")
+            print(f"Recording not found: {filename}")
             sys.exit(1)
         wav_path = matching[0]
 
@@ -212,11 +216,11 @@ def transcribe_clip(filename: str) -> None:
 
 def list_clips() -> None:
     print("Available clips:")
+    mic_dirs = sorted(p.name for p in RECORDINGS_DIR.iterdir() if p.is_dir()) if RECORDINGS_DIR.exists() else []
     for clip_name, (instruction, duration) in CLIPS.items():
-        variants = list(RECORDINGS_DIR.glob(f"{clip_name}_*.wav"))
-        if variants:
-            mics = ", ".join(sorted(v.stem.replace(f"{clip_name}_", "") for v in variants))
-            status = f"recorded ({mics})"
+        mics_with_clip = [m for m in mic_dirs if (RECORDINGS_DIR / m / f"{clip_name}.wav").exists()]
+        if mics_with_clip:
+            status = f"recorded ({', '.join(mics_with_clip)})"
         else:
             status = "missing"
         print(f"  [{status}] {clip_name} ({duration}s) — {instruction}")
