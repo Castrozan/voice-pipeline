@@ -160,6 +160,21 @@ uv run pytest tests/ -v
 All domain tests are pure (no I/O). Fakes in `tests/conftest.py`.
 Frame size is 16ms (256 samples at 16kHz) — Silero VAD v5 requires this for correct speech detection.
 
+### Audio Recording Workflow
+
+Recordings live in `tests/recordings/` and are committed to git for reproducible tests.
+Tool: `tests/record_test_audio.py`
+
+Recording flow:
+1. Agent presents ONE clip at a time: clip name, what to say, and duration
+2. User says "ok" (or "go") to start recording
+3. Agent runs `uv run python tests/record_test_audio.py <clip_name>` (3s countdown then records)
+4. Agent transcribes the recording with Deepgram/Whisper to verify speech was captured
+5. Agent shows VAD analysis (rms, peak, speech%, max_prob)
+6. If recording is bad, re-record. If good, move to next clip.
+
+After all clips are recorded, `uv run pytest tests/test_recorded_audio.py -v` runs VAD replay tests without user interaction.
+
 ## Conventions
 
 - No comments in code
