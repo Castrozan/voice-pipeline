@@ -1,5 +1,4 @@
 import asyncio
-import io
 import sys
 import wave
 from collections.abc import AsyncIterator
