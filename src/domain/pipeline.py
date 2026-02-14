@@ -55,6 +55,7 @@ class VoicePipeline:
         self._utterance_buffer: list[str] = []
         self._has_pending_interim: bool = False
         self._spoken_text_buffer: str = ""
+        self._last_interim_text: str = ""
         self._conversation_window_task: asyncio.Task | None = None
         self._current_tasks: list[asyncio.Task] = []
 
@@ -159,7 +160,14 @@ class VoicePipeline:
         if not event.text.strip():
             return
 
-        logger.debug("Transcript (final=%s): %s", event.is_final, event.text)
+        if event.is_final:
+            logger.info("Transcript: %s", event.text)
+            self._last_interim_text = ""
+        elif event.text != self._last_interim_text:
+            logger.debug("Transcript (interim): %s", event.text)
+            self._last_interim_text = event.text
+        else:
+            return
 
         if self._state == PipelineState.AMBIENT:
             detected_word = self._wake_word_detector.detect(event.text)
@@ -294,6 +302,7 @@ class VoicePipeline:
         self._state = PipelineState.AMBIENT
         self._utterance_buffer.clear()
         self._has_pending_interim = False
+        self._last_interim_text = ""
         self._speech_detector.reset()
         self._cancel_conversation_window()
 

@@ -32,6 +32,8 @@ class SpeechDetector:
         self._speech_active = False
         self._silence_frame_count = 0
         self._frame_count = 0
+        self._log_interval_silence = int(500 / frame_duration_ms)
+        self._log_interval_speech = int(200 / frame_duration_ms)
 
     @property
     def speech_active(self) -> bool:
@@ -42,7 +44,8 @@ class SpeechDetector:
         probability = self._vad.process_frame(frame)
         is_speech = probability >= self._threshold
 
-        if self._frame_count % 100 == 0:
+        log_interval = self._log_interval_speech if self._speech_active else self._log_interval_silence
+        if self._frame_count % log_interval == 0:
             amplitude = 0
             if len(frame) >= 2:
                 samples = struct.unpack(f"<{len(frame) // 2}h", frame)
@@ -56,14 +59,14 @@ class SpeechDetector:
             self._silence_frame_count = 0
             if not self._speech_active:
                 self._speech_active = True
-                logger.debug("Speech detected (prob=%.2f)", probability)
+                logger.info("Speech detected (prob=%.2f)", probability)
                 return SpeechEvent.SPEECH_START
             return SpeechEvent.SPEECH_CONTINUE
 
         self._silence_frame_count += 1
         if self._speech_active and self._silence_frame_count >= self._silence_frames_required:
             self._speech_active = False
-            logger.debug("Speech ended (silence frames=%d)", self._silence_frame_count)
+            logger.info("Speech ended (silence frames=%d)", self._silence_frame_count)
             return SpeechEvent.SPEECH_END
 
         return SpeechEvent.SILENCE

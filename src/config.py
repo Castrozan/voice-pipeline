@@ -17,7 +17,7 @@ class VoicePipelineConfig(BaseSettings):
     openai_api_key_file: str = ""
 
     vad_threshold: float = 0.5
-    vad_min_silence_ms: int = 300
+    vad_min_silence_ms: int = 800
     vad_model_path: str = ""
 
     wake_words: list[str] = ["jarvis"]
@@ -26,7 +26,7 @@ class VoicePipelineConfig(BaseSettings):
     max_history_turns: int = 20
 
     capture_device: str = "echo-cancel-source"
-    capture_gain: float = 3.0
+    capture_gain: float = 2.0
     sample_rate: int = 16000
     frame_duration_ms: int = 16
 
