@@ -96,7 +96,11 @@ def analyze_recording(pcm_data: bytes, config: VoicePipelineConfig) -> dict:
     }
 
 
-def record_one(clip_name: str, config: VoicePipelineConfig) -> None:
+def recording_filename(clip_name: str, mic: str) -> str:
+    return f"{clip_name}_{mic}.wav"
+
+
+def record_one(clip_name: str, mic: str, config: VoicePipelineConfig) -> None:
     if clip_name not in CLIPS:
         print(f"Unknown clip: {clip_name}")
         print(f"Available: {', '.join(CLIPS.keys())}")
@@ -106,7 +110,7 @@ def record_one(clip_name: str, config: VoicePipelineConfig) -> None:
     RECORDINGS_DIR.mkdir(exist_ok=True)
     os.environ["PIPEWIRE_NODE"] = config.capture_device
 
-    print(f"[{clip_name}] {instruction}")
+    print(f"[{clip_name}] ({mic} mic) {instruction}")
     print(f"  Recording {duration}s in 3...")
     time.sleep(1)
     print(f"  2...")
@@ -117,7 +121,8 @@ def record_one(clip_name: str, config: VoicePipelineConfig) -> None:
 
     pcm = record_clip(duration, config.capture_gain)
 
-    wav_path = RECORDINGS_DIR / f"{clip_name}.wav"
+    filename = recording_filename(clip_name, mic)
+    wav_path = RECORDINGS_DIR / filename
     save_wav(wav_path, pcm)
 
     os.environ.pop("PIPEWIRE_NODE", None)
@@ -130,12 +135,12 @@ def record_one(clip_name: str, config: VoicePipelineConfig) -> None:
           f"starts={analysis['speech_starts']} ends={analysis['speech_ends']}")
 
 
-def record_all(config: VoicePipelineConfig) -> None:
+def record_all(mic: str, config: VoicePipelineConfig) -> None:
     RECORDINGS_DIR.mkdir(exist_ok=True)
     os.environ["PIPEWIRE_NODE"] = config.capture_device
 
     print("=" * 60)
-    print("VOICE PIPELINE - AUDIO RECORDING TEST")
+    print(f"VOICE PIPELINE - AUDIO RECORDING ({mic} mic)")
     print("=" * 60)
     print(f"Device: {config.capture_device} | Gain: {config.capture_gain}x")
     print(f"Recordings: {RECORDINGS_DIR}")
@@ -153,7 +158,8 @@ def record_all(config: VoicePipelineConfig) -> None:
         print(f"  >>> RECORDING <<<")
 
         pcm = record_clip(duration, config.capture_gain)
-        wav_path = RECORDINGS_DIR / f"{clip_name}.wav"
+        filename = recording_filename(clip_name, mic)
+        wav_path = RECORDINGS_DIR / filename
         save_wav(wav_path, pcm)
 
         analysis = analyze_recording(pcm, config)
@@ -165,11 +171,14 @@ def record_all(config: VoicePipelineConfig) -> None:
     print("Done. Run: uv run pytest tests/test_recorded_audio.py -v")
 
 
-def transcribe_clip(clip_name: str) -> None:
-    wav_path = RECORDINGS_DIR / f"{clip_name}.wav"
+def transcribe_clip(filename: str) -> None:
+    wav_path = RECORDINGS_DIR / filename
     if not wav_path.exists():
-        print(f"Recording not found: {wav_path}")
-        sys.exit(1)
+        matching = list(RECORDINGS_DIR.glob(f"{filename}*.wav"))
+        if not matching:
+            print(f"Recording not found: {wav_path}")
+            sys.exit(1)
+        wav_path = matching[0]
 
     import asyncio
     from openai import AsyncOpenAI
@@ -196,41 +205,60 @@ def transcribe_clip(clip_name: str) -> None:
         return result.text
 
     text = asyncio.run(_transcribe())
-    print(f"[{clip_name}] Whisper: {text}")
+    print(f"[{wav_path.stem}] Whisper: {text}")
 
 
 def list_clips() -> None:
     print("Available clips:")
     for clip_name, (instruction, duration) in CLIPS.items():
-        exists = (RECORDINGS_DIR / f"{clip_name}.wav").exists()
-        status = "recorded" if exists else "missing"
-        print(f"  [{status:8s}] {clip_name} ({duration}s) — {instruction}")
+        variants = list(RECORDINGS_DIR.glob(f"{clip_name}_*.wav"))
+        if variants:
+            mics = ", ".join(sorted(v.stem.replace(f"{clip_name}_", "") for v in variants))
+            status = f"recorded ({mics})"
+        else:
+            status = "missing"
+        print(f"  [{status}] {clip_name} ({duration}s) — {instruction}")
 
 
 def main() -> None:
     config = VoicePipelineConfig()
+    mic = "builtin"
 
-    if len(sys.argv) < 2 or sys.argv[1] == "--help":
+    filtered_args = []
+    i = 1
+    while i < len(sys.argv):
+        if sys.argv[i] == "--mic" and i + 1 < len(sys.argv):
+            mic = sys.argv[i + 1]
+            i += 2
+        else:
+            filtered_args.append(sys.argv[i])
+            i += 1
+
+    if not filtered_args or filtered_args[0] == "--help":
         print("Usage:")
-        print(f"  {sys.argv[0]} <clip_name>    Record a single clip")
-        print(f"  {sys.argv[0]} all            Record all clips")
-        print(f"  {sys.argv[0]} list           List clips and status")
-        print(f"  {sys.argv[0]} transcribe <n> Transcribe a recorded clip")
+        print(f"  {sys.argv[0]} <clip_name> [--mic TYPE]  Record a single clip")
+        print(f"  {sys.argv[0]} all [--mic TYPE]          Record all clips")
+        print(f"  {sys.argv[0]} list                      List clips and status")
+        print(f"  {sys.argv[0]} transcribe <name>         Transcribe a recorded clip")
+        print()
+        print("  --mic TYPE: builtin (default), headset, etc.")
         print()
         list_clips()
         sys.exit(0)
 
-    if sys.argv[1] == "list":
+    command = filtered_args[0]
+
+    if command == "list":
         list_clips()
-    elif sys.argv[1] == "all":
-        record_all(config)
-    elif sys.argv[1] == "transcribe":
-        if len(sys.argv) < 3:
+    elif command == "all":
+        record_all(mic, config)
+    elif command == "transcribe":
+        if len(filtered_args) < 2:
             print("Usage: transcribe <clip_name>")
             sys.exit(1)
-        transcribe_clip(sys.argv[2])
+        transcribe_clip(filtered_args[1])
     else:
-        record_one(sys.argv[1], config)
+        record_one(command, mic, config)
 
 
 if __name__ == "__main__":
