@@ -32,6 +32,10 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+addopts = "-m 'not slow'"
+markers = [
+  "slow: marks tests that make external API calls (run with '-m slow')",
+]
 
 [project.optional-dependencies]
 dev = [
