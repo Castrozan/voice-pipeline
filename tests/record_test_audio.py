@@ -165,6 +165,40 @@ def record_all(config: VoicePipelineConfig) -> None:
     print("Done. Run: uv run pytest tests/test_recorded_audio.py -v")
 
 
+def transcribe_clip(clip_name: str) -> None:
+    wav_path = RECORDINGS_DIR / f"{clip_name}.wav"
+    if not wav_path.exists():
+        print(f"Recording not found: {wav_path}")
+        sys.exit(1)
+
+    import asyncio
+    from openai import AsyncOpenAI
+
+    async def _transcribe() -> str:
+        openai_api_key_file = os.environ.get(
+            "VOICE_PIPELINE_OPENAI_API_KEY_FILE", ""
+        )
+        if openai_api_key_file and Path(openai_api_key_file).exists():
+            api_key = Path(openai_api_key_file).read_text().strip()
+        else:
+            api_key = os.environ.get("OPENAI_API_KEY", "")
+
+        if not api_key:
+            print("No OpenAI API key found")
+            sys.exit(1)
+
+        client = AsyncOpenAI(api_key=api_key)
+        with open(wav_path, "rb") as f:
+            result = await client.audio.transcriptions.create(
+                model="whisper-1",
+                file=f,
+            )
+        return result.text
+
+    text = asyncio.run(_transcribe())
+    print(f"[{clip_name}] Whisper: {text}")
+
+
 def list_clips() -> None:
     print("Available clips:")
     for clip_name, (instruction, duration) in CLIPS.items():
@@ -178,9 +212,10 @@ def main() -> None:
 
     if len(sys.argv) < 2 or sys.argv[1] == "--help":
         print("Usage:")
-        print(f"  {sys.argv[0]} <clip_name>   Record a single clip")
-        print(f"  {sys.argv[0]} all           Record all clips")
-        print(f"  {sys.argv[0]} list          List clips and status")
+        print(f"  {sys.argv[0]} <clip_name>    Record a single clip")
+        print(f"  {sys.argv[0]} all            Record all clips")
+        print(f"  {sys.argv[0]} list           List clips and status")
+        print(f"  {sys.argv[0]} transcribe <n> Transcribe a recorded clip")
         print()
         list_clips()
         sys.exit(0)
@@ -189,6 +224,11 @@ def main() -> None:
         list_clips()
     elif sys.argv[1] == "all":
         record_all(config)
+    elif sys.argv[1] == "transcribe":
+        if len(sys.argv) < 3:
+            print("Usage: transcribe <clip_name>")
+            sys.exit(1)
+        transcribe_clip(sys.argv[2])
     else:
         record_one(sys.argv[1], config)
 
