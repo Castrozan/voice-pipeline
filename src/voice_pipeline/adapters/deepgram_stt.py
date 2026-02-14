@@ -58,6 +58,8 @@ class DeepgramStreamingTranscriber:
             yield event
 
     async def close_session(self) -> None:
+        was_active = self._session_active
+
         if self._listener_task and not self._listener_task.done():
             self._listener_task.cancel()
             try:
@@ -74,7 +76,9 @@ class DeepgramStreamingTranscriber:
         self._context_manager = None
         self._socket = None
         self._session_active = False
-        logger.info("Deepgram session closed")
+
+        if was_active:
+            logger.info("Deepgram session closed")
 
     async def _on_message(self, message) -> None:
         if not isinstance(message, ListenV1ResultsEvent):
