@@ -114,6 +114,23 @@ in
   };
 
   config = lib.mkIf cfg.enable {
+    home.file.".config/voice-pipeline/env".text = ''
+      VOICE_PIPELINE_GATEWAY_URL=${cfg.gatewayUrl}
+      VOICE_PIPELINE_GATEWAY_TOKEN_FILE=${cfg.gatewayTokenFile}
+      VOICE_PIPELINE_DEFAULT_AGENT=${cfg.defaultAgent}
+      VOICE_PIPELINE_DEEPGRAM_API_KEY_FILE=${cfg.deepgramApiKeyFile}
+      VOICE_PIPELINE_OPENAI_API_KEY_FILE=${cfg.openaiApiKeyFile}
+      VOICE_PIPELINE_TTS_VOICE=${cfg.ttsVoice}
+      VOICE_PIPELINE_WAKE_WORDS=${wakeWordsJson}
+      VOICE_PIPELINE_CONVERSATION_WINDOW_SECONDS=${toString cfg.conversationWindowSeconds}
+      VOICE_PIPELINE_MAX_HISTORY_TURNS=${toString cfg.maxHistoryTurns}
+      VOICE_PIPELINE_CAPTURE_DEVICE=${cfg.captureDevice}
+      VOICE_PIPELINE_BARGE_IN_ENABLED=${if cfg.bargeInEnabled then "true" else "false"}
+      VOICE_PIPELINE_STT_ENGINE=${cfg.sttEngine}
+      VOICE_PIPELINE_AGENT_VOICES=${agentVoicesJson}
+      VOICE_PIPELINE_MODEL=${cfg.model}
+    '';
+
     systemd.user.services.voice-pipeline = {
       Unit = {
         Description = "Voice Pipeline - Real-time conversational AI";
@@ -121,7 +138,7 @@ in
       };
       Service = {
         Type = "simple";
-        EnvironmentFile = toString environmentFile;
+        EnvironmentFile = "%h/.config/voice-pipeline/env";
         ExecStart = "${pkgs.lib.getExe (
           pkgs.writeShellScriptBin "voice-pipeline-start" ''
             exec voice-pipeline
