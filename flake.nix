@@ -20,18 +20,21 @@
           writeShellScriptBin,
           python312,
           portaudio,
+          alsa-lib,
           lib,
           stdenv,
         }:
         let
           python = python312;
           prefix = "$HOME/.local/share/voice-pipeline-venv";
+          nativeLibs = [
+            portaudio
+            alsa-lib
+            stdenv.cc.cc.lib
+          ];
         in
         writeShellScriptBin "voice-pipeline" ''
-          export PATH="${python}/bin:${portaudio}/lib:''${PATH:+:$PATH}"
-          export LD_LIBRARY_PATH="${portaudio}/lib:${
-            lib.makeLibraryPath [ stdenv.cc.cc.lib ]
-          }:''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          export LD_LIBRARY_PATH="${lib.makeLibraryPath nativeLibs}:''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
           VENV="${prefix}"
 
           if [ ! -d "$VENV" ]; then
