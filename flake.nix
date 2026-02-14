@@ -36,16 +36,21 @@
         writeShellScriptBin "voice-pipeline" ''
           export LD_LIBRARY_PATH="${lib.makeLibraryPath nativeLibs}:''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
           VENV="${prefix}"
+          SRC="${self}"
 
           if [ ! -d "$VENV" ]; then
             echo "[voice-pipeline] Creating virtualenv..." >&2
             ${python}/bin/python -m venv "$VENV" >&2
           fi
 
-          if [ ! -f "$VENV/.installed" ] || [ "$VENV/.installed" -ot "${self}/pyproject.toml" ]; then
+          if [ ! -f "$VENV/.installed" ] || [ "$VENV/.installed" -ot "$SRC/pyproject.toml" ]; then
             echo "[voice-pipeline] Installing dependencies..." >&2
+            TMPBUILD=$(mktemp -d)
+            cp -r "$SRC"/. "$TMPBUILD/"
+            chmod -R u+w "$TMPBUILD"
             "$VENV/bin/pip" install --quiet --upgrade pip >&2
-            "$VENV/bin/pip" install --quiet "${self}" >&2
+            "$VENV/bin/pip" install --quiet "$TMPBUILD" >&2
+            rm -rf "$TMPBUILD"
             touch "$VENV/.installed"
           fi
 
