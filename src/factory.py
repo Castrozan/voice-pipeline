@@ -20,6 +20,7 @@ def create_capture(config: VoicePipelineConfig) -> SounddeviceCapture:
         device=config.capture_device,
         sample_rate=config.sample_rate,
         frame_duration_ms=config.frame_duration_ms,
+        gain=config.capture_gain,
     )
 
 

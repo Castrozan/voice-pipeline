@@ -1,4 +1,5 @@
 import logging
+import struct
 from enum import Enum, auto
 
 from ports.vad import VadPort
@@ -42,9 +43,13 @@ class SpeechDetector:
         is_speech = probability >= self._threshold
 
         if self._frame_count % 100 == 0:
+            amplitude = 0
+            if len(frame) >= 2:
+                samples = struct.unpack(f"<{len(frame) // 2}h", frame)
+                amplitude = max(abs(s) for s in samples)
             logger.debug(
-                "VAD prob=%.4f threshold=%.2f speech=%s",
-                probability, self._threshold, is_speech,
+                "VAD prob=%.4f threshold=%.2f speech=%s amp=%d",
+                probability, self._threshold, is_speech, amplitude,
             )
 
         if is_speech:

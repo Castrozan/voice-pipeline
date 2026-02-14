@@ -15,11 +15,13 @@ class SounddeviceCapture:
         device: str | int | None = None,
         sample_rate: int = 16000,
         frame_duration_ms: int = 30,
+        gain: float = 1.0,
     ) -> None:
         self._device = device
         self._sample_rate = sample_rate
         self._frame_duration_ms = frame_duration_ms
         self._frame_size = int(sample_rate * frame_duration_ms / 1000)
+        self._gain = gain
         self._stream: sd.InputStream | None = None
         self._queue: janus.Queue[bytes] | None = None
 
@@ -37,7 +39,8 @@ class SounddeviceCapture:
         def audio_callback(indata: np.ndarray, frames: int, time_info, status) -> None:
             if status:
                 logger.warning("Audio capture status: %s", status)
-            pcm_bytes = (indata[:, 0] * 32767).astype(np.int16).tobytes()
+            amplified = np.clip(indata[:, 0] * self._gain, -1.0, 1.0)
+            pcm_bytes = (amplified * 32767).astype(np.int16).tobytes()
             try:
                 self._queue.sync_q.put_nowait(pcm_bytes)
             except janus.SyncQueueFull:
