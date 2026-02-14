@@ -166,6 +166,7 @@ class SounddevicePlayback:
         self._cancelled = False
 
     async def _playback_loop(self) -> None:
+        loop = asyncio.get_event_loop()
         while True:
             if not self._queue:
                 break
@@ -183,6 +184,8 @@ class SounddevicePlayback:
             if self._stream:
                 audio_array = np.frombuffer(chunk, dtype=np.int16)
                 try:
-                    self._stream.write(audio_array.reshape(-1, 1))
+                    await loop.run_in_executor(
+                        None, self._stream.write, audio_array.reshape(-1, 1)
+                    )
                 except sd.PortAudioError:
                     logger.warning("Playback write error")
