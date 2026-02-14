@@ -6,6 +6,7 @@ import numpy as np
 from tests.conftest import (
     SAMPLE_RATE,
     FRAME_SIZE,
+    FRAME_DURATION_MS,
     generate_silence,
     generate_sine_wave,
     generate_white_noise,
@@ -118,7 +119,7 @@ class TestSplitIntoFrames:
     def test_correct_frame_count(self):
         pcm = generate_sine_wave(duration_ms=320)
         frames = split_into_frames(pcm)
-        expected_frames = 320 // 32
+        expected_frames = 320 // FRAME_DURATION_MS
         assert len(frames) == expected_frames
 
     def test_frame_size_bytes(self):
@@ -128,6 +129,6 @@ class TestSplitIntoFrames:
             assert len(frame) == FRAME_SIZE * 2
 
     def test_incomplete_frames_dropped(self):
-        pcm = generate_sine_wave(duration_ms=48)
+        pcm = generate_sine_wave(duration_ms=25)
         frames = split_into_frames(pcm)
         assert len(frames) == 1

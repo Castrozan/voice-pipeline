@@ -42,7 +42,7 @@ class TestFakeAudioCapture:
         assert fake_capture.sample_rate == 16000
 
     def test_frame_size(self, fake_capture):
-        assert fake_capture.frame_size == 512
+        assert fake_capture.frame_size == 256
 
 
 class TestFakeAudioPlayback:

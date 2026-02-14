@@ -141,7 +141,7 @@ All settings via `VOICE_PIPELINE_` prefixed environment variables:
 | `MODEL` | `anthropic/claude-sonnet-4-5` | LLM model for OpenClaw |
 | `VAD_THRESHOLD` | `0.5` | Speech detection threshold |
 | `VAD_MIN_SILENCE_MS` | `300` | Silence duration to end speech |
-| `FRAME_DURATION_MS` | `32` | Audio frame size (Silero VAD v5 optimal) |
+| `FRAME_DURATION_MS` | `16` | Audio frame size (Silero VAD v5 required) |
 | `SAMPLE_RATE` | `16000` | Audio sample rate |
 | `WAKE_WORDS` | `["jarvis"]` | JSON list of wake words |
 | `CAPTURE_DEVICE` | `echo-cancel-source` | PipeWire capture device |
@@ -158,7 +158,7 @@ uv run pytest tests/ -v
 ```
 
 All domain tests are pure (no I/O). Fakes in `tests/conftest.py`.
-Frame size is 32ms (512 samples at 16kHz) — Silero VAD v5 optimal.
+Frame size is 16ms (256 samples at 16kHz) — Silero VAD v5 requires this for correct speech detection.
 
 ## Conventions
 
