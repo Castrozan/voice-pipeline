@@ -94,7 +94,9 @@ class SounddeviceCapture:
             if self._device.lower() in dev["name"].lower() and dev["max_input_channels"] > 0:
                 logger.info("Resolved device '%s' -> %d (%s)", self._device, i, dev["name"])
                 return i
-        logger.warning("Device '%s' not found, using default", self._device)
+        import os
+        os.environ["PIPEWIRE_NODE"] = self._device
+        logger.info("Device '%s' not in PortAudio, set PIPEWIRE_NODE for PipeWire routing", self._device)
         return None
 
 
