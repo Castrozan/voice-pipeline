@@ -42,6 +42,7 @@ def main() -> None:
 
     subparsers.add_parser("status", help="Query pipeline status")
     subparsers.add_parser("logs", help="Tail the daemon log file")
+    subparsers.add_parser("env", help="Dump audio environment report")
 
     args = parser.parse_args()
 
@@ -67,6 +68,10 @@ def main() -> None:
     if args.command == "logs":
         import subprocess
         subprocess.run(["tail", "-f", config.log_file], env={**os.environ, "TERM": os.environ.get("TERM", "xterm-256color")})
+        return
+
+    if args.command == "env":
+        _run_audio_environment_report()
         return
 
     if args.command in ("toggle", "agent", "status"):
@@ -164,3 +169,14 @@ async def _run_daemon(config: VoicePipelineConfig) -> None:
         except (asyncio.CancelledError, asyncio.TimeoutError):
             pass
         await control.stop()
+
+
+def _run_audio_environment_report() -> None:
+    from audio_env import discover, format_environment_report
+
+    environment = discover()
+    if environment is None:
+        print("Failed to discover audio environment (wpctl not available)", file=sys.stderr)
+        sys.exit(1)
+
+    print(format_environment_report(environment))

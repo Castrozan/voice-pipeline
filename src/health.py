@@ -1,5 +1,5 @@
 import logging
-import struct
+import shutil
 from dataclasses import dataclass
 
 import numpy as np
@@ -20,15 +20,14 @@ class HealthCheckResult:
 def run_startup_checks(config: VoicePipelineConfig) -> list[HealthCheckResult]:
     results = [
         _check_audio_device(config),
-        _check_pipewire_source(config),
+        _check_pipewire_audio_environment(config),
         _check_vad_model(config),
         _check_vad_with_audio(config),
         _check_api_keys(config),
-        _check_gateway_reachable(config),
+        _check_completion_engine_reachable(config),
     ]
 
     passed = sum(1 for r in results if r.passed)
-    failed = [r for r in results if not r.passed]
 
     logger.info("Health check: %d/%d passed", passed, len(results))
     for result in results:
@@ -48,75 +47,60 @@ def _check_audio_device(config: VoicePipelineConfig) -> HealthCheckResult:
     name = "audio_device"
     try:
         devices = sd.query_devices()
-        device_found = False
         device_name = config.capture_device
 
         for dev in devices:
             if device_name.lower() in dev["name"].lower() and dev["max_input_channels"] > 0:
-                device_found = True
-                break
+                return HealthCheckResult(name=name, passed=True, detail=f"Device '{device_name}' found")
 
-        if not device_found:
-            try:
-                default = sd.query_devices(kind="input")
-                return HealthCheckResult(
-                    name=name,
-                    passed=True,
-                    detail=f"'{device_name}' not in PortAudio (will use PIPEWIRE_NODE), default input: {default['name']}",
-                )
-            except sd.PortAudioError:
-                return HealthCheckResult(name=name, passed=False, detail="No input devices available")
-
-        return HealthCheckResult(name=name, passed=True, detail=f"Device '{device_name}' found")
+        try:
+            default = sd.query_devices(kind="input")
+            return HealthCheckResult(
+                name=name,
+                passed=True,
+                detail=f"'{device_name}' not in PortAudio (will use PIPEWIRE_NODE), default input: {default['name']}",
+            )
+        except sd.PortAudioError:
+            return HealthCheckResult(name=name, passed=False, detail="No input devices available")
     except Exception as exc:
         return HealthCheckResult(name=name, passed=False, detail=str(exc))
 
 
-def _check_pipewire_source(config: VoicePipelineConfig) -> HealthCheckResult:
+def _check_pipewire_audio_environment(config: VoicePipelineConfig) -> HealthCheckResult:
     name = "pipewire_source"
     try:
-        import subprocess
-        result = subprocess.run(
-            ["pw-cli", "info", config.capture_device],
-            capture_output=True, text=True, timeout=3,
+        from audio_env import discover
+
+        environment = discover()
+        if environment is None:
+            return HealthCheckResult(name=name, passed=True, detail="wpctl not available, skipping PipeWire check")
+
+        capture_device_name = config.capture_device
+        source_found = any(
+            capture_device_name.lower() in source.name.lower()
+            for source in environment.sources
         )
-        if result.returncode != 0:
-            return HealthCheckResult(name=name, passed=False, detail=f"'{config.capture_device}' not found in PipeWire")
 
-        props = {}
-        for line in result.stdout.splitlines():
-            stripped = line.lstrip("*\t ")
-            if "=" in stripped:
-                key, _, val = stripped.partition("=")
-                props[key.strip()] = val.strip().strip('"')
+        if not source_found:
+            return HealthCheckResult(
+                name=name,
+                passed=False,
+                detail=f"'{capture_device_name}' not found in PipeWire sources",
+            )
 
-        node_desc = props.get("node.description", config.capture_device)
-
-        link_result = subprocess.run(
-            ["pw-link", "-l"],
-            capture_output=True, text=True, timeout=3,
-        )
-        capture_source = "unknown"
-        playback_sink = "unknown"
-        if link_result.returncode == 0:
-            lines = link_result.stdout.splitlines()
-            for i, line in enumerate(lines):
-                if "echo-cancel-capture:input_" in line and i + 1 < len(lines):
-                    link_line = lines[i + 1].strip()
-                    if "|<-" in link_line:
-                        capture_source = link_line.split("|<-")[-1].strip().split(":")[0]
-                if "echo-cancel-playback:output_" in line and i + 1 < len(lines):
-                    link_line = lines[i + 1].strip()
-                    if "|->" in link_line:
-                        playback_sink = link_line.split("|->")[-1].strip().split(":")[0]
+        if environment.echo_cancel:
+            echo = environment.echo_cancel
+            return HealthCheckResult(
+                name=name,
+                passed=True,
+                detail=f"capture={echo.capture_physical_source}, playback={echo.playback_physical_sink}",
+            )
 
         return HealthCheckResult(
             name=name,
             passed=True,
-            detail=f"{node_desc}: capture={capture_source}, playback={playback_sink}",
+            detail=f"Source '{capture_device_name}' found (no echo-cancel detected)",
         )
-    except FileNotFoundError:
-        return HealthCheckResult(name=name, passed=True, detail="pw-cli not available, skipping PipeWire check")
     except Exception as exc:
         return HealthCheckResult(name=name, passed=False, detail=str(exc))
 
@@ -219,6 +203,10 @@ def _check_api_keys(config: VoicePipelineConfig) -> HealthCheckResult:
         anthropic_key = config.read_secret(config.anthropic_api_key_file) or os.environ.get("ANTHROPIC_API_KEY", "")
         if not anthropic_key:
             missing.append("anthropic (no key file and ANTHROPIC_API_KEY not set)")
+    elif config.completion_engine == "cli":
+        cli_executable = config.completion_cli_command.split()[0]
+        if not shutil.which(cli_executable):
+            missing.append(f"cli command '{cli_executable}' not found in PATH")
     else:
         gateway_token = config.read_secret(config.gateway_token_file)
         if not gateway_token:
@@ -230,18 +218,27 @@ def _check_api_keys(config: VoicePipelineConfig) -> HealthCheckResult:
     return HealthCheckResult(name=name, passed=True, detail="All API keys loaded")
 
 
-def _check_gateway_reachable(config: VoicePipelineConfig) -> HealthCheckResult:
-    name = "gateway"
+def _check_completion_engine_reachable(config: VoicePipelineConfig) -> HealthCheckResult:
+    name = "completion_engine"
+
+    if config.completion_engine == "cli":
+        cli_executable = config.completion_cli_command.split()[0]
+        path = shutil.which(cli_executable)
+        if path:
+            return HealthCheckResult(name=name, passed=True, detail=f"CLI command found: {path}")
+        return HealthCheckResult(name=name, passed=False, detail=f"CLI command '{cli_executable}' not found in PATH")
+
     if config.completion_engine != "openclaw":
         return HealthCheckResult(name=name, passed=True, detail=f"Skipped (engine={config.completion_engine})")
+
     try:
         import urllib.request
         req = urllib.request.Request(f"{config.gateway_url}/health", method="GET")
         req.add_header("User-Agent", "voice-pipeline/healthcheck")
         response = urllib.request.urlopen(req, timeout=3)
-        return HealthCheckResult(name=name, passed=True, detail=f"Reachable ({response.status})")
+        return HealthCheckResult(name=name, passed=True, detail=f"Gateway reachable ({response.status})")
     except urllib.error.URLError as exc:
         reason = str(exc.reason) if hasattr(exc, "reason") else str(exc)
-        return HealthCheckResult(name=name, passed=False, detail=f"Unreachable: {reason}")
+        return HealthCheckResult(name=name, passed=False, detail=f"Gateway unreachable: {reason}")
     except Exception as exc:
-        return HealthCheckResult(name=name, passed=False, detail=f"Unreachable: {exc}")
+        return HealthCheckResult(name=name, passed=False, detail=f"Gateway unreachable: {exc}")
