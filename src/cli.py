@@ -41,6 +41,7 @@ def main() -> None:
     agent_parser.add_argument("name", help="Agent name")
 
     subparsers.add_parser("status", help="Query pipeline status")
+    subparsers.add_parser("logs", help="Tail the daemon log file")
 
     args = parser.parse_args()
 
@@ -60,6 +61,11 @@ def main() -> None:
     config = VoicePipelineConfig()
     if args.agent:
         config.default_agent = args.agent
+
+    if args.command == "logs":
+        import subprocess
+        subprocess.run(["tail", "-f", config.log_file])
+        return
 
     if args.command in ("toggle", "agent", "status"):
         asyncio.run(_run_client_command(args, config))
