@@ -45,9 +45,10 @@ def main() -> None:
     args = parser.parse_args()
 
     log_level = logging.DEBUG if args.verbose else logging.INFO
+    log_format = "%(asctime)s %(name)s %(levelname)s %(message)s"
     logging.basicConfig(
         level=log_level,
-        format="%(asctime)s %(name)s %(levelname)s %(message)s",
+        format=log_format,
         datefmt="%H:%M:%S",
     )
 
@@ -63,6 +64,10 @@ def main() -> None:
     if args.command in ("toggle", "agent", "status"):
         asyncio.run(_run_client_command(args, config))
     else:
+        file_handler = logging.FileHandler(config.log_file, mode="w")
+        file_handler.setLevel(log_level)
+        file_handler.setFormatter(logging.Formatter(log_format, datefmt="%H:%M:%S"))
+        logging.getLogger().addHandler(file_handler)
         asyncio.run(_run_daemon(config))
 
 

@@ -34,6 +34,7 @@ class VoicePipelineConfig(BaseSettings):
     barge_in_min_speech_ms: int = 200
 
     socket_path: str = "/tmp/voice-pipeline.sock"
+    log_file: str = "/tmp/voice-pipeline.log"
 
     agent_voices: dict[str, str] = {}
 
