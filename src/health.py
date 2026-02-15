@@ -20,6 +20,7 @@ class HealthCheckResult:
 def run_startup_checks(config: VoicePipelineConfig) -> list[HealthCheckResult]:
     results = [
         _check_audio_device(config),
+        _check_pipewire_source(config),
         _check_vad_model(config),
         _check_vad_with_audio(config),
         _check_api_keys(config),
@@ -67,6 +68,55 @@ def _check_audio_device(config: VoicePipelineConfig) -> HealthCheckResult:
                 return HealthCheckResult(name=name, passed=False, detail="No input devices available")
 
         return HealthCheckResult(name=name, passed=True, detail=f"Device '{device_name}' found")
+    except Exception as exc:
+        return HealthCheckResult(name=name, passed=False, detail=str(exc))
+
+
+def _check_pipewire_source(config: VoicePipelineConfig) -> HealthCheckResult:
+    name = "pipewire_source"
+    try:
+        import subprocess
+        result = subprocess.run(
+            ["pw-cli", "info", config.capture_device],
+            capture_output=True, text=True, timeout=3,
+        )
+        if result.returncode != 0:
+            return HealthCheckResult(name=name, passed=False, detail=f"'{config.capture_device}' not found in PipeWire")
+
+        output = result.stdout
+        props = {}
+        for line in output.splitlines():
+            line = line.strip()
+            if "=" in line and not line.startswith("*"):
+                key, _, val = line.partition("=")
+                props[key.strip()] = val.strip().strip('"')
+
+        node_desc = props.get("node.description", config.capture_device)
+        media_class = props.get("media.class", "unknown")
+
+        link_result = subprocess.run(
+            ["pw-link", "-io"],
+            capture_output=True, text=True, timeout=3,
+        )
+        hw_source = "unknown"
+        if link_result.returncode == 0:
+            lines = link_result.stdout.splitlines()
+            for i, line in enumerate(lines):
+                if "echo-cancel-capture" in line:
+                    for j in range(max(0, i - 5), i):
+                        candidate = lines[j].strip()
+                        if candidate and not candidate.startswith("|") and ":" not in candidate:
+                            hw_source = candidate
+                            break
+                    break
+
+        return HealthCheckResult(
+            name=name,
+            passed=True,
+            detail=f"{node_desc} ({media_class}), hw source: {hw_source}",
+        )
+    except FileNotFoundError:
+        return HealthCheckResult(name=name, passed=True, detail="pw-cli not available, skipping PipeWire check")
     except Exception as exc:
         return HealthCheckResult(name=name, passed=False, detail=str(exc))
 
@@ -164,9 +214,14 @@ def _check_api_keys(config: VoicePipelineConfig) -> HealthCheckResult:
     if not openai_key:
         missing.append(f"openai ({config.openai_api_key_file or 'not configured'})")
 
-    gateway_token = config.read_secret(config.gateway_token_file)
-    if not gateway_token:
-        missing.append(f"gateway ({config.gateway_token_file or 'not configured'})")
+    if config.completion_engine == "anthropic":
+        anthropic_key = config.read_secret(config.anthropic_api_key_file)
+        if not anthropic_key:
+            missing.append(f"anthropic ({config.anthropic_api_key_file or 'not configured'})")
+    else:
+        gateway_token = config.read_secret(config.gateway_token_file)
+        if not gateway_token:
+            missing.append(f"gateway ({config.gateway_token_file or 'not configured'})")
 
     if missing:
         return HealthCheckResult(name=name, passed=False, detail=f"Missing: {', '.join(missing)}")
@@ -176,6 +231,8 @@ def _check_api_keys(config: VoicePipelineConfig) -> HealthCheckResult:
 
 def _check_gateway_reachable(config: VoicePipelineConfig) -> HealthCheckResult:
     name = "gateway"
+    if config.completion_engine != "openclaw":
+        return HealthCheckResult(name=name, passed=True, detail=f"Skipped (engine={config.completion_engine})")
     try:
         import urllib.request
         req = urllib.request.Request(f"{config.gateway_url}/health", method="GET")

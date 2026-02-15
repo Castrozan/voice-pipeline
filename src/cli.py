@@ -47,11 +47,13 @@ def main() -> None:
 
     log_level = logging.DEBUG if args.verbose else logging.INFO
     log_format = "%(asctime)s %(name)s %(levelname)s %(message)s"
-    logging.basicConfig(
-        level=log_level,
-        format=log_format,
-        datefmt="%H:%M:%S",
-    )
+    log_datefmt = "%H:%M:%S"
+
+    from log_format import ColoredFormatter
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(log_level)
+    console_handler.setFormatter(ColoredFormatter(datefmt=log_datefmt))
+    logging.basicConfig(level=log_level, handlers=[console_handler])
 
     if args.verbose:
         logging.getLogger("websockets").setLevel(logging.INFO)
@@ -64,7 +66,7 @@ def main() -> None:
 
     if args.command == "logs":
         import subprocess
-        subprocess.run(["tail", "-f", config.log_file])
+        subprocess.run(["tail", "-f", config.log_file], env={**os.environ, "TERM": os.environ.get("TERM", "xterm-256color")})
         return
 
     if args.command in ("toggle", "agent", "status"):
@@ -72,7 +74,7 @@ def main() -> None:
     else:
         file_handler = logging.FileHandler(config.log_file, mode="w")
         file_handler.setLevel(log_level)
-        file_handler.setFormatter(logging.Formatter(log_format, datefmt="%H:%M:%S"))
+        file_handler.setFormatter(ColoredFormatter(datefmt=log_datefmt))
         logging.getLogger().addHandler(file_handler)
         asyncio.run(_run_daemon(config))
 
