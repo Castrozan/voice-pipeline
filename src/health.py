@@ -83,37 +83,37 @@ def _check_pipewire_source(config: VoicePipelineConfig) -> HealthCheckResult:
         if result.returncode != 0:
             return HealthCheckResult(name=name, passed=False, detail=f"'{config.capture_device}' not found in PipeWire")
 
-        output = result.stdout
         props = {}
-        for line in output.splitlines():
-            line = line.strip()
-            if "=" in line and not line.startswith("*"):
-                key, _, val = line.partition("=")
+        for line in result.stdout.splitlines():
+            stripped = line.lstrip("*\t ")
+            if "=" in stripped:
+                key, _, val = stripped.partition("=")
                 props[key.strip()] = val.strip().strip('"')
 
         node_desc = props.get("node.description", config.capture_device)
-        media_class = props.get("media.class", "unknown")
 
         link_result = subprocess.run(
-            ["pw-link", "-io"],
+            ["pw-link", "-l"],
             capture_output=True, text=True, timeout=3,
         )
-        hw_source = "unknown"
+        capture_source = "unknown"
+        playback_sink = "unknown"
         if link_result.returncode == 0:
             lines = link_result.stdout.splitlines()
             for i, line in enumerate(lines):
-                if "echo-cancel-capture" in line:
-                    for j in range(max(0, i - 5), i):
-                        candidate = lines[j].strip()
-                        if candidate and not candidate.startswith("|") and ":" not in candidate:
-                            hw_source = candidate
-                            break
-                    break
+                if "echo-cancel-capture:input_" in line and i + 1 < len(lines):
+                    link_line = lines[i + 1].strip()
+                    if "|<-" in link_line:
+                        capture_source = link_line.split("|<-")[-1].strip().split(":")[0]
+                if "echo-cancel-playback:output_" in line and i + 1 < len(lines):
+                    link_line = lines[i + 1].strip()
+                    if "|->" in link_line:
+                        playback_sink = link_line.split("|->")[-1].strip().split(":")[0]
 
         return HealthCheckResult(
             name=name,
             passed=True,
-            detail=f"{node_desc} ({media_class}), hw source: {hw_source}",
+            detail=f"{node_desc}: capture={capture_source}, playback={playback_sink}",
         )
     except FileNotFoundError:
         return HealthCheckResult(name=name, passed=True, detail="pw-cli not available, skipping PipeWire check")
@@ -215,9 +215,10 @@ def _check_api_keys(config: VoicePipelineConfig) -> HealthCheckResult:
         missing.append(f"openai ({config.openai_api_key_file or 'not configured'})")
 
     if config.completion_engine == "anthropic":
-        anthropic_key = config.read_secret(config.anthropic_api_key_file)
+        import os
+        anthropic_key = config.read_secret(config.anthropic_api_key_file) or os.environ.get("ANTHROPIC_API_KEY", "")
         if not anthropic_key:
-            missing.append(f"anthropic ({config.anthropic_api_key_file or 'not configured'})")
+            missing.append("anthropic (no key file and ANTHROPIC_API_KEY not set)")
     else:
         gateway_token = config.read_secret(config.gateway_token_file)
         if not gateway_token:

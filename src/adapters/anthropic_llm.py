@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 class AnthropicCompletion:
     def __init__(self, api_key: str, model: str = "claude-sonnet-4-5-20250514") -> None:
-        self._client = anthropic.AsyncAnthropic(api_key=api_key)
+        self._client = anthropic.AsyncAnthropic(api_key=api_key or None)
         self._model = model.removeprefix("anthropic/")
         self._cancel_event = asyncio.Event()
 
