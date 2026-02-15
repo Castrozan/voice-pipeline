@@ -37,6 +37,9 @@ class VoicePipelineConfig(BaseSettings):
 
     agent_voices: dict[str, str] = {}
 
+    completion_engine: Literal["openclaw", "anthropic"] = "openclaw"
+    anthropic_api_key_file: str = ""
+
     model: str = "anthropic/claude-sonnet-4-5"
 
     def read_secret(self, path: str) -> str:

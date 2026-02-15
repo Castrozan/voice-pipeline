@@ -3,7 +3,7 @@ import logging
 from config import VoicePipelineConfig
 from adapters.sounddevice_audio import SounddeviceCapture, SounddevicePlayback
 from adapters.silero_vad import SileroVad
-from adapters.openclaw_llm import OpenClawCompletion
+from ports.completion import CompletionPort
 from adapters.openai_tts import OpenAITtsSynthesizer
 from adapters.unix_control import UnixSocketControlServer
 from domain.conversation import ConversationHistory
@@ -38,7 +38,14 @@ def create_transcriber(config: VoicePipelineConfig, deepgram_api_key: str, opena
     )
 
 
-def create_completion(config: VoicePipelineConfig, gateway_token: str) -> OpenClawCompletion:
+def create_completion(config: VoicePipelineConfig) -> CompletionPort:
+    if config.completion_engine == "anthropic":
+        from adapters.anthropic_llm import AnthropicCompletion
+        anthropic_api_key = config.read_secret(config.anthropic_api_key_file)
+        return AnthropicCompletion(api_key=anthropic_api_key, model=config.model)
+
+    from adapters.openclaw_llm import OpenClawCompletion
+    gateway_token = config.read_secret(config.gateway_token_file)
     return OpenClawCompletion(
         gateway_url=config.gateway_url,
         token=gateway_token,
@@ -60,7 +67,6 @@ def create_speech_detector(config: VoicePipelineConfig, vad: SileroVad) -> Speec
 
 
 def create_pipeline(config: VoicePipelineConfig) -> tuple[VoicePipeline, UnixSocketControlServer]:
-    gateway_token = config.read_secret(config.gateway_token_file)
     openai_api_key = config.read_secret(config.openai_api_key_file)
     deepgram_api_key = config.read_secret(config.deepgram_api_key_file)
 
@@ -68,7 +74,7 @@ def create_pipeline(config: VoicePipelineConfig) -> tuple[VoicePipeline, UnixSoc
     playback = SounddevicePlayback(sample_rate=24000)
     vad = SileroVad(model_path=config.vad_model_path, sample_rate=config.sample_rate)
     transcriber = create_transcriber(config, deepgram_api_key, openai_api_key)
-    completion = create_completion(config, gateway_token)
+    completion = create_completion(config)
     synthesizer = create_synthesizer(openai_api_key)
     speech_detector = create_speech_detector(config, vad)
     control = UnixSocketControlServer(socket_path=config.socket_path)

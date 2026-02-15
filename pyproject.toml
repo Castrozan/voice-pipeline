@@ -12,6 +12,7 @@ dependencies = [
   "deepgram-sdk>=3.5",
   "pydantic>=2.7",
   "pydantic-settings>=2.3",
+  "anthropic>=0.34",
   "janus>=1.0",
 ]
 
