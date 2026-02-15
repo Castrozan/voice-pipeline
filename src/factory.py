@@ -39,6 +39,10 @@ def create_transcriber(config: VoicePipelineConfig, deepgram_api_key: str, opena
 
 
 def create_completion(config: VoicePipelineConfig) -> CompletionPort:
+    if config.completion_engine == "cli":
+        from adapters.cli_completion import CliCompletion
+        return CliCompletion(command=config.completion_cli_command)
+
     if config.completion_engine == "anthropic":
         from adapters.anthropic_llm import AnthropicCompletion
         anthropic_api_key = config.read_secret(config.anthropic_api_key_file)

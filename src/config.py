@@ -38,7 +38,8 @@ class VoicePipelineConfig(BaseSettings):
 
     agent_voices: dict[str, str] = {}
 
-    completion_engine: Literal["openclaw", "anthropic"] = "openclaw"
+    completion_engine: Literal["openclaw", "anthropic", "cli"] = "openclaw"
+    completion_cli_command: str = "claude -p"
     anthropic_api_key_file: str = ""
 
     model: str = "anthropic/claude-sonnet-4-5"
