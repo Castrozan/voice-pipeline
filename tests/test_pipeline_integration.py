@@ -472,6 +472,27 @@ class TestBargeInMinimumSpeechDuration:
         )
         return pipeline, vad, completion, synthesizer, playback
 
+    def _simulate_barge_in_frames(
+        self,
+        pipeline: VoicePipeline,
+        frame: bytes,
+        count: int,
+    ) -> bool:
+        for _ in range(count):
+            event = pipeline._speech_detector.process_frame(frame)
+            if event.is_speech and pipeline._barge_in_enabled:
+                pipeline._barge_in_window.append(True)
+            else:
+                if pipeline._barge_in_enabled:
+                    pipeline._barge_in_window.append(False)
+        window = pipeline._barge_in_window
+        if len(window) >= pipeline._barge_in_window_size:
+            return (
+                sum(window) / len(window)
+                >= pipeline._barge_in_speech_ratio_threshold
+            )
+        return False
+
     async def test_single_speech_frame_does_not_barge_in(self):
         pipeline, vad, completion, synthesizer, playback = self._build_speaking_pipeline()
         pipeline._state = PipelineState.SPEAKING
@@ -479,21 +500,11 @@ class TestBargeInMinimumSpeechDuration:
         pipeline._enabled = True
 
         vad.set_probabilities([0.9] + [0.0] * 5)
-
         frame = generate_silence(duration_ms=FRAME_DURATION_MS)
-        for i in range(6):
-            event = pipeline._speech_detector.process_frame(frame)
-            if event.is_speech and pipeline._barge_in_enabled:
-                pipeline._barge_in_speech_frames += 1
-                if pipeline._barge_in_speech_frames >= pipeline._barge_in_min_frames:
-                    await pipeline._handle_barge_in()
-                    pipeline._barge_in_speech_frames = 0
-            else:
-                pipeline._barge_in_speech_frames = 0
+        triggered = self._simulate_barge_in_frames(pipeline, frame, 6)
 
-        assert pipeline._state == PipelineState.SPEAKING, (
-            f"Expected SPEAKING after single speech frame, got {pipeline._state}"
-        )
+        assert not triggered
+        assert pipeline._state == PipelineState.SPEAKING
 
     async def test_few_speech_frames_does_not_barge_in(self):
         pipeline, vad, completion, synthesizer, playback = self._build_speaking_pipeline()
@@ -501,24 +512,18 @@ class TestBargeInMinimumSpeechDuration:
         pipeline._running = True
         pipeline._enabled = True
 
-        min_frames_needed = int(200 / FRAME_DURATION_MS)
-        too_few = min_frames_needed - 2
-        vad.set_probabilities([0.9] * too_few + [0.0] * 5)
+        window_size = pipeline._barge_in_window_size
+        too_few_speech = int(window_size * 0.5)
+        too_many_silence = window_size - too_few_speech
+        vad.set_probabilities([0.9] * too_few_speech + [0.0] * too_many_silence)
 
         frame = generate_silence(duration_ms=FRAME_DURATION_MS)
-        for i in range(too_few + 5):
-            event = pipeline._speech_detector.process_frame(frame)
-            if event.is_speech and pipeline._barge_in_enabled:
-                pipeline._barge_in_speech_frames += 1
-                if pipeline._barge_in_speech_frames >= pipeline._barge_in_min_frames:
-                    await pipeline._handle_barge_in()
-                    pipeline._barge_in_speech_frames = 0
-            else:
-                pipeline._barge_in_speech_frames = 0
-
-        assert pipeline._state == PipelineState.SPEAKING, (
-            f"Expected SPEAKING after {too_few} speech frames, got {pipeline._state}"
+        triggered = self._simulate_barge_in_frames(
+            pipeline, frame, too_few_speech + too_many_silence,
         )
+
+        assert not triggered
+        assert pipeline._state == PipelineState.SPEAKING
 
     async def test_sustained_speech_triggers_barge_in(self):
         pipeline, vad, completion, synthesizer, playback = self._build_speaking_pipeline()
@@ -526,67 +531,70 @@ class TestBargeInMinimumSpeechDuration:
         pipeline._running = True
         pipeline._enabled = True
 
-        min_frames_needed = int(200 / FRAME_DURATION_MS)
-        enough_frames = min_frames_needed + 2
+        window_size = pipeline._barge_in_window_size
+        enough_frames = window_size + 2
         vad.set_probabilities([0.9] * enough_frames)
 
         frame = generate_silence(duration_ms=FRAME_DURATION_MS)
-        barge_in_triggered = False
-        for i in range(enough_frames):
-            event = pipeline._speech_detector.process_frame(frame)
-            if event.is_speech and pipeline._barge_in_enabled:
-                pipeline._barge_in_speech_frames += 1
-                if pipeline._barge_in_speech_frames >= pipeline._barge_in_min_frames:
-                    await pipeline._handle_barge_in()
-                    pipeline._barge_in_speech_frames = 0
-                    barge_in_triggered = True
-                    break
-            else:
-                pipeline._barge_in_speech_frames = 0
+        triggered = self._simulate_barge_in_frames(pipeline, frame, enough_frames)
 
-        assert barge_in_triggered, (
-            f"Expected barge-in after {enough_frames} speech frames, "
-            f"but it was not triggered"
-        )
-        assert pipeline._state == PipelineState.LISTENING, (
-            f"Expected LISTENING after barge-in, got {pipeline._state}"
+        assert triggered, (
+            f"Expected barge-in after {enough_frames} speech frames"
         )
 
-    async def test_barge_in_frame_count_matches_config(self):
+    async def test_barge_in_window_size_matches_config(self):
         for min_speech_ms in [100, 200, 400]:
             pipeline, vad, _, _, _ = self._build_speaking_pipeline(
                 barge_in_min_speech_ms=min_speech_ms,
             )
-            expected_frames = int(min_speech_ms / FRAME_DURATION_MS)
-            assert pipeline._barge_in_min_frames == expected_frames, (
-                f"For {min_speech_ms}ms min speech, expected {expected_frames} frames, "
-                f"got {pipeline._barge_in_min_frames}"
+            expected_window = int(min_speech_ms / FRAME_DURATION_MS)
+            assert pipeline._barge_in_window_size == expected_window, (
+                f"For {min_speech_ms}ms min speech, expected window {expected_window}, "
+                f"got {pipeline._barge_in_window_size}"
             )
 
-    async def test_interrupted_speech_resets_barge_in_counter(self):
+    async def test_intermittent_silence_below_threshold_does_not_barge_in(self):
         pipeline, vad, completion, synthesizer, playback = self._build_speaking_pipeline()
         pipeline._state = PipelineState.SPEAKING
         pipeline._running = True
         pipeline._enabled = True
 
-        min_frames_needed = int(200 / FRAME_DURATION_MS)
-        almost_enough = min_frames_needed - 1
-        speech_then_silence_then_speech = (
-            [0.9] * almost_enough + [0.0] * 3 + [0.9] * almost_enough
-        )
-        vad.set_probabilities(speech_then_silence_then_speech)
+        window_size = pipeline._barge_in_window_size
+        pattern = [0.9, 0.0] * (window_size // 2) + [0.0] * 3
+        vad.set_probabilities(pattern)
 
         frame = generate_silence(duration_ms=FRAME_DURATION_MS)
-        for i in range(len(speech_then_silence_then_speech)):
-            event = pipeline._speech_detector.process_frame(frame)
-            if event.is_speech and pipeline._barge_in_enabled:
-                pipeline._barge_in_speech_frames += 1
-                if pipeline._barge_in_speech_frames >= pipeline._barge_in_min_frames:
-                    await pipeline._handle_barge_in()
-                    pipeline._barge_in_speech_frames = 0
-            else:
-                pipeline._barge_in_speech_frames = 0
+        triggered = self._simulate_barge_in_frames(pipeline, frame, len(pattern))
 
-        assert pipeline._state == PipelineState.SPEAKING, (
-            f"Expected SPEAKING (silence gap should reset counter), got {pipeline._state}"
+        assert not triggered
+        assert pipeline._state == PipelineState.SPEAKING
+
+    async def test_sliding_window_tolerates_brief_silence_gaps(self):
+        pipeline, vad, completion, synthesizer, playback = self._build_speaking_pipeline()
+        pipeline._state = PipelineState.SPEAKING
+        pipeline._running = True
+        pipeline._enabled = True
+
+        window_size = pipeline._barge_in_window_size
+        speech_count = int(window_size * 0.85)
+        silence_count = window_size - speech_count
+        pattern = []
+        speech_remaining = speech_count
+        for i in range(window_size):
+            if i % 5 == 4 and silence_count > 0:
+                pattern.append(0.0)
+                silence_count -= 1
+            elif speech_remaining > 0:
+                pattern.append(0.9)
+                speech_remaining -= 1
+            else:
+                pattern.append(0.0)
+        vad.set_probabilities(pattern)
+
+        frame = generate_silence(duration_ms=FRAME_DURATION_MS)
+        triggered = self._simulate_barge_in_frames(pipeline, frame, len(pattern))
+
+        assert triggered, (
+            f"Expected barge-in with {speech_count}/{window_size} speech frames "
+            f"(ratio={speech_count / window_size:.2f}, threshold={pipeline._barge_in_speech_ratio_threshold})"
         )
