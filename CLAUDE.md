@@ -162,16 +162,23 @@ Frame size is 16ms (256 samples at 16kHz) — Silero VAD v5 requires this for co
 
 ### Audio Recording Workflow
 
-Recordings live in `tests/recordings/` and are committed to git for reproducible tests.
+Recordings live in `tests/recordings/{mic_type}/` and are committed to git for reproducible tests.
 Tool: `tests/record_test_audio.py`
 
-Recording flow:
-1. Agent presents ONE clip at a time: clip name, what to say, and duration
-2. User says "ok" (or "go") to start recording
-3. Agent runs `uv run python tests/record_test_audio.py <clip_name>` (3s countdown then records)
-4. Agent transcribes the recording with Deepgram/Whisper to verify speech was captured
-5. Agent shows VAD analysis (rms, peak, speech%, max_prob)
-6. If recording is bad, re-record. If good, move to next clip.
+**Before recording:** Stop the voice pipeline (`Ctrl+C` in `vc-pipe-exec` tmux session) to free the audio device. Both the pipeline and the recording tool use `echo-cancel-source`.
+
+**Adding new clips:** Define clips in `tests/record_test_audio.py` CLIPS dict with `(instruction, duration_seconds)`. Agent designs the exact script the user must say, including "Apple" prefix when needed to work around first-word-eating on echo-cancel source.
+
+**Recording flow (one clip at a time):**
+1. Agent presents ONE clip: name, exact script to say, duration
+2. User says "ok" or "go" to start recording
+3. Agent runs `uv run python tests/record_test_audio.py <clip_name> --mic <type>` (3s countdown then records)
+4. Agent runs `uv run python tests/record_test_audio.py transcribe <mic/clip>` to verify with Whisper
+5. **Transcription must match the script exactly** (word for word). If Whisper drops or changes words, re-record. VAD stats (starts, ends, speech%) are informational but transcription accuracy is the gate.
+6. If transcription matches → move to next clip. If not → re-record same clip.
+7. After all clips recorded → commit to git → write/update tests.
+
+**Mic types:** `builtin` (laptop mic, echo-cancel processed), `headset` (3.5mm jack, no first-word-eating).
 
 After all clips are recorded, `uv run pytest tests/test_recorded_audio.py -v` runs VAD replay tests without user interaction.
 

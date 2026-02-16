@@ -30,6 +30,13 @@ CLIPS = {
     "background_music_long": ("Keep normal music, say: 'Apple, Jarvis, what's the weather like today and do I need an umbrella?'", 10),
     "background_music_loud": ("Turn music UP loud, say: 'Apple, Jarvis, hello.'", 8),
     "continuous_ramble": ("Talk continuously for 10 seconds about anything", 12),
+    "short_complete_sentence": ("Say: 'Hey Robson, what time is it?'", 5),
+    "long_sentence_natural_pauses": ("Say: 'I woke up today very late, but now I'm not feeling very great. What do you think it is? Maybe sick or something.'", 12),
+    "incomplete_sentence_stops": ("Say: 'If you were to choose a color for your perfect' — then stop", 8),
+    "chained_sentences_one_thought": ("Say: 'I find it really interesting to be doing this. Now we have just some minor changes to do, like running this at a CLI. So yeah, we are getting there.'", 15),
+    "mid_sentence_pause_then_continue": ("Say: 'I was thinking about...' (pause ~2s) '...a really interesting feature.'", 10),
+    "two_quick_follow_ups": ("Say: 'Hello.' (pause 2s) 'Tell me a joke.'", 10),
+    "barge_in_speech": ("Say loudly and continuously: 'No no no, stop, I want to say something else entirely.'", 5),
 }
 
 
