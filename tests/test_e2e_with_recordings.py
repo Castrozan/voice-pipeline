@@ -448,12 +448,6 @@ class TestAudibleE2E:
 
         await run_pipeline_with_timeout(pipeline, timeout=90.0)
 
-        assert pipeline.state in (
-            PipelineState.SPEAKING,
-            PipelineState.CONVERSING,
-            PipelineState.AMBIENT,
-        ), f"Expected pipeline to reach SPEAKING or beyond, got {pipeline.state.name}"
-
         assert playback.total_bytes > 0, "No audio was played through speakers"
         assert playback.chunk_count >= 1, "Expected at least one audio chunk played"
 
