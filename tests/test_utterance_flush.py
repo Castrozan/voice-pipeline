@@ -309,13 +309,19 @@ class TestSpeechSegmentDetectionOnBuiltinRecordings:
         assert starts >= 1, f"Expected at least 1 speech start, got {starts}"
         assert ends >= 1, f"Expected at least 1 speech end, got {ends}"
 
-    async def test_long_sentence_natural_pauses_produces_multiple_segments(self, real_vad):
+    async def test_long_sentence_natural_pauses_produces_multiple_segments(
+        self, real_vad
+    ):
         path = BUILTIN_RECORDINGS_DIR / "long_sentence_natural_pauses.wav"
         skip_if_missing(path)
         frames = load_recording_as_frames(path) + generate_silence_frames(1500)
         starts, ends = count_speech_events(real_vad, frames)
-        assert starts >= 2, f"Expected at least 2 speech starts for long sentence with pauses, got {starts}"
-        assert ends >= 2, f"Expected at least 2 speech ends for long sentence with pauses, got {ends}"
+        assert starts >= 2, (
+            f"Expected at least 2 speech starts for long sentence with pauses, got {starts}"
+        )
+        assert ends >= 2, (
+            f"Expected at least 2 speech ends for long sentence with pauses, got {ends}"
+        )
 
     async def test_incomplete_sentence_produces_speech(self, real_vad):
         path = BUILTIN_RECORDINGS_DIR / "incomplete_sentence_stops.wav"
@@ -330,23 +336,33 @@ class TestSpeechSegmentDetectionOnBuiltinRecordings:
         skip_if_missing(path)
         frames = load_recording_as_frames(path) + generate_silence_frames(1500)
         starts, ends = count_speech_events(real_vad, frames)
-        assert starts >= 2, f"Expected at least 2 speech starts for chained sentences, got {starts}"
-        assert ends >= 2, f"Expected at least 2 speech ends for chained sentences, got {ends}"
+        assert starts >= 2, (
+            f"Expected at least 2 speech starts for chained sentences, got {starts}"
+        )
+        assert ends >= 2, (
+            f"Expected at least 2 speech ends for chained sentences, got {ends}"
+        )
 
     async def test_mid_sentence_pause_produces_two_segments(self, real_vad):
         path = BUILTIN_RECORDINGS_DIR / "mid_sentence_pause_then_continue.wav"
         skip_if_missing(path)
         frames = load_recording_as_frames(path) + generate_silence_frames(1500)
         starts, ends = count_speech_events(real_vad, frames)
-        assert starts >= 2, f"Expected at least 2 speech starts for mid-sentence pause, got {starts}"
-        assert ends >= 2, f"Expected at least 2 speech ends for mid-sentence pause, got {ends}"
+        assert starts >= 2, (
+            f"Expected at least 2 speech starts for mid-sentence pause, got {starts}"
+        )
+        assert ends >= 2, (
+            f"Expected at least 2 speech ends for mid-sentence pause, got {ends}"
+        )
 
     async def test_two_quick_follow_ups_produce_two_segments(self, real_vad):
         path = BUILTIN_RECORDINGS_DIR / "two_quick_follow_ups.wav"
         skip_if_missing(path)
         frames = load_recording_as_frames(path) + generate_silence_frames(1500)
         starts, ends = count_speech_events(real_vad, frames)
-        assert starts >= 2, f"Expected at least 2 speech starts for follow-ups, got {starts}"
+        assert starts >= 2, (
+            f"Expected at least 2 speech starts for follow-ups, got {starts}"
+        )
         assert ends >= 2, f"Expected at least 2 speech ends for follow-ups, got {ends}"
 
     async def test_barge_in_speech_produces_sustained_speech(self, real_vad):
@@ -354,7 +370,9 @@ class TestSpeechSegmentDetectionOnBuiltinRecordings:
         skip_if_missing(path)
         frames = load_recording_as_frames(path) + generate_silence_frames(1500)
         starts, ends = count_speech_events(real_vad, frames)
-        assert starts >= 1, f"Expected at least 1 speech start for barge-in speech, got {starts}"
+        assert starts >= 1, (
+            f"Expected at least 1 speech start for barge-in speech, got {starts}"
+        )
 
 
 class TestUtteranceFlushWithRealVad:
@@ -362,14 +380,18 @@ class TestUtteranceFlushWithRealVad:
     def real_vad(self):
         return SileroVad(sample_rate=SAMPLE_RATE)
 
-    async def test_wake_word_plus_short_sentence_produces_single_response(self, real_vad):
+    async def test_wake_word_plus_short_sentence_produces_single_response(
+        self, real_vad
+    ):
         path = BUILTIN_RECORDINGS_DIR / "short_complete_sentence.wav"
         skip_if_missing(path)
 
         frames = load_recording_as_frames(path) + generate_silence_frames(3000)
         transcriber = QueueBasedFakeTranscriber()
         pipeline, _, completion, _ = build_pipeline_with_real_vad(
-            real_vad, frames, transcriber=transcriber,
+            real_vad,
+            frames,
+            transcriber=transcriber,
         )
         pipeline._running = True
         pipeline._enabled = True
@@ -389,20 +411,23 @@ class TestUtteranceFlushWithRealVad:
 
         assert completion._call_count == 1
         user_messages = [
-            m for m in pipeline._conversation.to_api_messages()
-            if m["role"] == "user"
+            m for m in pipeline._conversation.to_api_messages() if m["role"] == "user"
         ]
         assert len(user_messages) == 1
         assert "what time is it" in user_messages[0]["content"].lower()
 
-    async def test_long_sentence_with_pauses_collected_as_single_utterance(self, real_vad):
+    async def test_long_sentence_with_pauses_collected_as_single_utterance(
+        self, real_vad
+    ):
         path = BUILTIN_RECORDINGS_DIR / "long_sentence_natural_pauses.wav"
         skip_if_missing(path)
 
         frames = load_recording_as_frames(path) + generate_silence_frames(5000)
         transcriber = QueueBasedFakeTranscriber()
         pipeline, _, completion, _ = build_pipeline_with_real_vad(
-            real_vad, frames, transcriber=transcriber,
+            real_vad,
+            frames,
+            transcriber=transcriber,
         )
         pipeline._running = True
         pipeline._enabled = True
@@ -410,7 +435,8 @@ class TestUtteranceFlushWithRealVad:
         async def director():
             await wait_for_session_count(transcriber, 1)
             transcriber.push_transcript(
-                "Jarvis, I woke up today very late", is_final=False,
+                "Jarvis, I woke up today very late",
+                is_final=False,
             )
             await asyncio.sleep(0.3)
             transcriber.push_transcript(
@@ -434,19 +460,22 @@ class TestUtteranceFlushWithRealVad:
 
         assert completion._call_count == 1
         user_messages = [
-            m for m in pipeline._conversation.to_api_messages()
-            if m["role"] == "user"
+            m for m in pipeline._conversation.to_api_messages() if m["role"] == "user"
         ]
         assert len(user_messages) == 1
 
-    async def test_incomplete_sentence_still_gets_processed_after_grace_period(self, real_vad):
+    async def test_incomplete_sentence_still_gets_processed_after_grace_period(
+        self, real_vad
+    ):
         path = BUILTIN_RECORDINGS_DIR / "incomplete_sentence_stops.wav"
         skip_if_missing(path)
 
         frames = load_recording_as_frames(path) + generate_silence_frames(6000)
         transcriber = QueueBasedFakeTranscriber()
         pipeline, _, completion, _ = build_pipeline_with_real_vad(
-            real_vad, frames, transcriber=transcriber,
+            real_vad,
+            frames,
+            transcriber=transcriber,
         )
         pipeline._running = True
         pipeline._enabled = True
@@ -469,8 +498,7 @@ class TestUtteranceFlushWithRealVad:
 
         assert completion._call_count == 1
         user_messages = [
-            m for m in pipeline._conversation.to_api_messages()
-            if m["role"] == "user"
+            m for m in pipeline._conversation.to_api_messages() if m["role"] == "user"
         ]
         assert len(user_messages) == 1
         assert "color" in user_messages[0]["content"].lower()
@@ -482,7 +510,9 @@ class TestUtteranceFlushWithRealVad:
         frames = load_recording_as_frames(path) + generate_silence_frames(5000)
         transcriber = QueueBasedFakeTranscriber()
         pipeline, _, completion, _ = build_pipeline_with_real_vad(
-            real_vad, frames, transcriber=transcriber,
+            real_vad,
+            frames,
+            transcriber=transcriber,
         )
         pipeline._running = True
         pipeline._enabled = True
@@ -515,20 +545,23 @@ class TestUtteranceFlushWithRealVad:
 
         assert completion._call_count == 1
         user_messages = [
-            m for m in pipeline._conversation.to_api_messages()
-            if m["role"] == "user"
+            m for m in pipeline._conversation.to_api_messages() if m["role"] == "user"
         ]
         assert len(user_messages) == 1
         assert "getting there" in user_messages[0]["content"].lower()
 
-    async def test_mid_sentence_pause_then_continue_collected_as_single_utterance(self, real_vad):
+    async def test_mid_sentence_pause_then_continue_collected_as_single_utterance(
+        self, real_vad
+    ):
         path = BUILTIN_RECORDINGS_DIR / "mid_sentence_pause_then_continue.wav"
         skip_if_missing(path)
 
         frames = load_recording_as_frames(path) + generate_silence_frames(5000)
         transcriber = QueueBasedFakeTranscriber()
         pipeline, _, completion, _ = build_pipeline_with_real_vad(
-            real_vad, frames, transcriber=transcriber,
+            real_vad,
+            frames,
+            transcriber=transcriber,
         )
         pipeline._running = True
         pipeline._enabled = True
@@ -536,7 +569,8 @@ class TestUtteranceFlushWithRealVad:
         async def director():
             await wait_for_session_count(transcriber, 1)
             transcriber.push_transcript(
-                "Jarvis, I was thinking about", is_final=False,
+                "Jarvis, I was thinking about",
+                is_final=False,
             )
             await asyncio.sleep(0.5)
             transcriber.push_transcript(
@@ -555,8 +589,7 @@ class TestUtteranceFlushWithRealVad:
 
         assert completion._call_count == 1
         user_messages = [
-            m for m in pipeline._conversation.to_api_messages()
-            if m["role"] == "user"
+            m for m in pipeline._conversation.to_api_messages() if m["role"] == "user"
         ]
         assert len(user_messages) == 1
         assert "interesting feature" in user_messages[0]["content"].lower()
@@ -574,11 +607,15 @@ class TestChainedConversationWithBuiltinRecordings:
         skip_if_missing(followup_path)
 
         frames = concatenate_recordings_with_silence(
-            [wake_path, followup_path], gap_ms=2000, trailing_silence_ms=3000,
+            [wake_path, followup_path],
+            gap_ms=2000,
+            trailing_silence_ms=3000,
         )
         transcriber = QueueBasedFakeTranscriber()
         pipeline, _, completion, _ = build_pipeline_with_real_vad(
-            real_vad, frames, transcriber=transcriber,
+            real_vad,
+            frames,
+            transcriber=transcriber,
         )
         pipeline._running = True
         pipeline._enabled = True
@@ -586,13 +623,15 @@ class TestChainedConversationWithBuiltinRecordings:
         async def director():
             await wait_for_session_count(transcriber, 1)
             transcriber.push_transcript(
-                "Robson, turn off the lights.", is_final=True,
+                "Robson, turn off the lights.",
+                is_final=True,
             )
             await wait_for_completion_count(completion, 1)
 
             await wait_for_session_count(transcriber, 2, timeout_seconds=15.0)
             transcriber.push_transcript(
-                "Hello there, now tell me a joke.", is_final=True,
+                "Hello there, now tell me a joke.",
+                is_final=True,
             )
             await wait_for_completion_count(completion, 2)
 
@@ -627,7 +666,9 @@ class TestChainedConversationWithBuiltinRecordings:
         )
         transcriber = QueueBasedFakeTranscriber()
         pipeline, _, completion, _ = build_pipeline_with_real_vad(
-            real_vad, frames, transcriber=transcriber,
+            real_vad,
+            frames,
+            transcriber=transcriber,
         )
         pipeline._running = True
         pipeline._enabled = True
@@ -635,19 +676,22 @@ class TestChainedConversationWithBuiltinRecordings:
         async def director():
             await wait_for_session_count(transcriber, 1)
             transcriber.push_transcript(
-                "Jarvis, what's the weather like today?", is_final=True,
+                "Jarvis, what's the weather like today?",
+                is_final=True,
             )
             await wait_for_completion_count(completion, 1)
 
             await wait_for_session_count(transcriber, 2, timeout_seconds=15.0)
             transcriber.push_transcript(
-                "I woke up today very late. What do you think?", is_final=True,
+                "I woke up today very late. What do you think?",
+                is_final=True,
             )
             await wait_for_completion_count(completion, 2)
 
             await wait_for_session_count(transcriber, 3, timeout_seconds=15.0)
             transcriber.push_transcript(
-                "What time is it?", is_final=True,
+                "What time is it?",
+                is_final=True,
             )
             await wait_for_completion_count(completion, 3)
 
@@ -678,8 +722,11 @@ class TestBargeInWithRealVad:
         frames = load_recording_as_frames(path) + generate_silence_frames(1000)
         transcriber = QueueBasedFakeTranscriber()
         pipeline, _, completion, synthesizer = build_pipeline_with_real_vad(
-            real_vad, frames, transcriber=transcriber,
-            barge_in_enabled=True, barge_in_min_speech_ms=200,
+            real_vad,
+            frames,
+            transcriber=transcriber,
+            barge_in_enabled=True,
+            barge_in_min_speech_ms=200,
         )
 
         pipeline._state = PipelineState.SPEAKING
@@ -706,7 +753,9 @@ class TestBargeInWithRealVad:
         )
         assert pipeline._state == PipelineState.LISTENING
 
-    async def test_barge_in_recording_exceeds_sliding_window_speech_ratio(self, real_vad):
+    async def test_barge_in_recording_exceeds_sliding_window_speech_ratio(
+        self, real_vad
+    ):
         path = BUILTIN_RECORDINGS_DIR / "barge_in_speech.wav"
         skip_if_missing(path)
 
@@ -759,7 +808,14 @@ class TestBargeInWithRealVad:
             async def stream(self, messages, agent) -> AsyncIterator[str]:
                 self._cancelled = False
                 self._call_count += 1
-                chunks = ["Well, ", "the current ", "time is ", "about ", "three ", "o'clock."]
+                chunks = [
+                    "Well, ",
+                    "the current ",
+                    "time is ",
+                    "about ",
+                    "three ",
+                    "o'clock.",
+                ]
                 for chunk in chunks:
                     if self._cancelled:
                         break
@@ -810,7 +866,8 @@ class TestBargeInWithRealVad:
         async def director():
             await wait_for_session_count(transcriber, 1)
             transcriber.push_transcript(
-                "Hey Robson, what time is it?", is_final=True,
+                "Hey Robson, what time is it?",
+                is_final=True,
             )
 
             deadline = asyncio.get_event_loop().time() + 20.0
@@ -840,6 +897,40 @@ class TestBargeInWithRealVad:
             "Expected barge-in when barge_in_speech.wav plays during slow response"
         )
 
+    async def test_speech_frames_during_speaking_buffered_and_flushed_after_barge_in(
+        self,
+        real_vad,
+    ):
+        path = BUILTIN_RECORDINGS_DIR / "barge_in_speech.wav"
+        skip_if_missing(path)
+
+        frames = load_recording_as_frames(path) + generate_silence_frames(1000)
+        transcriber = QueueBasedFakeTranscriber()
+        pipeline, _, completion, synthesizer = build_pipeline_with_real_vad(
+            real_vad,
+            frames,
+            transcriber=transcriber,
+            barge_in_enabled=True,
+            barge_in_min_speech_ms=200,
+        )
+
+        pipeline._state = PipelineState.SPEAKING
+        pipeline._running = True
+        pipeline._enabled = True
+        pipeline._conversation.add_user_message("previous question")
+        pipeline._conversation.add_assistant_message("previous response being spoken")
+        pipeline._spoken_text_buffer = "previous response"
+
+        await pipeline._audio_loop()
+
+        assert pipeline._state == PipelineState.LISTENING
+        assert transcriber.start_session_count >= 1, (
+            "Expected STT session to start immediately after barge-in"
+        )
+        assert len(transcriber._audio_received) > 0, (
+            "Expected pre-buffered speech frames to be flushed to new STT session after barge-in"
+        )
+
 
 class TestHeadsetRecordingsStillWork:
     @pytest.fixture
@@ -853,7 +944,9 @@ class TestHeadsetRecordingsStillWork:
         frames = load_recording_as_frames(path) + generate_silence_frames(1500)
         transcriber = QueueBasedFakeTranscriber()
         pipeline, _, _, _ = build_pipeline_with_real_vad(
-            real_vad, frames, transcriber=transcriber,
+            real_vad,
+            frames,
+            transcriber=transcriber,
         )
         pipeline._running = True
         pipeline._enabled = True
@@ -871,7 +964,9 @@ class TestHeadsetRecordingsStillWork:
 
         frames = load_recording_as_frames(path) + generate_silence_frames(1500)
         starts, ends = count_speech_events(real_vad, frames)
-        assert starts >= 1, f"Expected at least 1 speech start from headset continuous_ramble, got {starts}"
+        assert starts >= 1, (
+            f"Expected at least 1 speech start from headset continuous_ramble, got {starts}"
+        )
 
     async def test_headset_silence_does_not_trigger_stt(self, real_vad):
         path = HEADSET_RECORDINGS_DIR / "silence_3s.wav"
@@ -880,7 +975,9 @@ class TestHeadsetRecordingsStillWork:
         frames = load_recording_as_frames(path) + generate_silence_frames(500)
         transcriber = QueueBasedFakeTranscriber()
         pipeline, _, _, _ = build_pipeline_with_real_vad(
-            real_vad, frames, transcriber=transcriber,
+            real_vad,
+            frames,
+            transcriber=transcriber,
         )
         pipeline._running = True
         pipeline._enabled = True
@@ -898,10 +995,16 @@ class TestHeadsetRecordingsStillWork:
 
         frames = load_recording_as_frames(path) + generate_silence_frames(1500)
         starts, ends = count_speech_events(real_vad, frames)
-        assert starts >= 1, f"Expected at least 1 speech start from headset loud_speech, got {starts}"
-        assert ends >= 1, f"Expected at least 1 speech end from headset loud_speech, got {ends}"
+        assert starts >= 1, (
+            f"Expected at least 1 speech start from headset loud_speech, got {starts}"
+        )
+        assert ends >= 1, (
+            f"Expected at least 1 speech end from headset loud_speech, got {ends}"
+        )
 
-    async def test_headset_two_recordings_chained_produce_multiple_sessions(self, real_vad):
+    async def test_headset_two_recordings_chained_produce_multiple_sessions(
+        self, real_vad
+    ):
         paths = [
             HEADSET_RECORDINGS_DIR / "wake_jarvis_weather.wav",
             HEADSET_RECORDINGS_DIR / "loud_speech.wav",
@@ -910,11 +1013,15 @@ class TestHeadsetRecordingsStillWork:
             skip_if_missing(p)
 
         frames = concatenate_recordings_with_silence(
-            paths, gap_ms=2000, trailing_silence_ms=2000,
+            paths,
+            gap_ms=2000,
+            trailing_silence_ms=2000,
         )
         transcriber = QueueBasedFakeTranscriber()
         pipeline, _, completion, _ = build_pipeline_with_real_vad(
-            real_vad, frames, transcriber=transcriber,
+            real_vad,
+            frames,
+            transcriber=transcriber,
         )
         pipeline._running = True
         pipeline._enabled = True
@@ -922,13 +1029,15 @@ class TestHeadsetRecordingsStillWork:
         async def director():
             await wait_for_session_count(transcriber, 1)
             transcriber.push_transcript(
-                "Jarvis, what's the weather?", is_final=True,
+                "Jarvis, what's the weather?",
+                is_final=True,
             )
             await wait_for_completion_count(completion, 1)
 
             await wait_for_session_count(transcriber, 2, timeout_seconds=15.0)
             transcriber.push_transcript(
-                "Tell me more about that.", is_final=True,
+                "Tell me more about that.",
+                is_final=True,
             )
             await wait_for_completion_count(completion, 2)
 
