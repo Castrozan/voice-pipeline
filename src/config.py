@@ -13,6 +13,7 @@ class VoicePipelineConfig(BaseSettings):
     stt_mode: Literal["vad-gated", "always-streaming"] = "vad-gated"
     deepgram_api_key_file: str = ""
 
+    tts_engine: Literal["openai", "edge-tts"] = "openai"
     tts_voice: str = "onyx"
     openai_api_key_file: str = ""
 

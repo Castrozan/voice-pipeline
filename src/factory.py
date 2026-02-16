@@ -4,6 +4,7 @@ from config import VoicePipelineConfig
 from adapters.sounddevice_audio import SounddeviceCapture, SounddevicePlayback
 from adapters.silero_vad import SileroVad
 from ports.completion import CompletionPort
+from ports.synthesizer import SynthesizerPort
 from adapters.openai_tts import OpenAITtsSynthesizer
 from adapters.unix_control import UnixSocketControlServer
 from domain.conversation import ConversationHistory
@@ -64,7 +65,13 @@ def create_completion(config: VoicePipelineConfig) -> CompletionPort:
     )
 
 
-def create_synthesizer(openai_api_key: str) -> OpenAITtsSynthesizer:
+def create_synthesizer(
+    config: VoicePipelineConfig, openai_api_key: str
+) -> SynthesizerPort:
+    if config.tts_engine == "edge-tts":
+        from adapters.edge_tts_synthesizer import EdgeTtsSynthesizer
+
+        return EdgeTtsSynthesizer()
     return OpenAITtsSynthesizer(api_key=openai_api_key)
 
 
@@ -90,7 +97,7 @@ def create_pipeline(
     vad = SileroVad(model_path=config.vad_model_path, sample_rate=config.sample_rate)
     transcriber = create_transcriber(config, deepgram_api_key, openai_api_key)
     completion = create_completion(config)
-    synthesizer = create_synthesizer(openai_api_key)
+    synthesizer = create_synthesizer(config, openai_api_key)
     speech_detector = create_speech_detector(config, vad)
     control = UnixSocketControlServer(socket_path=config.socket_path)
 

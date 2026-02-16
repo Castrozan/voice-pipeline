@@ -7,7 +7,15 @@
 let
   cfg = config.services.voice-pipeline;
 
-  agentVoicesJson = builtins.toJSON (lib.mapAttrs (_name: agentCfg: agentCfg.openaiVoice) cfg.agents);
+  agentVoicesJson = builtins.toJSON (
+    lib.mapAttrs (
+      _name: agentCfg:
+      if cfg.ttsEngine == "edge-tts" && agentCfg.edgeTtsVoice != "" then
+        agentCfg.edgeTtsVoice
+      else
+        agentCfg.openaiVoice
+    ) cfg.agents
+  );
 
   wakeWordsJson = builtins.toJSON cfg.wakeWords;
 in
@@ -43,6 +51,14 @@ in
     wakeWords = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [ "jarvis" ];
+    };
+
+    ttsEngine = lib.mkOption {
+      type = lib.types.enum [
+        "openai"
+        "edge-tts"
+      ];
+      default = "openai";
     };
 
     ttsVoice = lib.mkOption {
@@ -96,6 +112,11 @@ in
             type = lib.types.str;
             default = "onyx";
           };
+          options.edgeTtsVoice = lib.mkOption {
+            type = lib.types.str;
+            default = "";
+            description = "Edge-TTS voice name (e.g. pt-BR-AntonioNeural). When set and ttsEngine=edge-tts, overrides openaiVoice.";
+          };
         }
       );
       default = { };
@@ -109,6 +130,7 @@ in
       VOICE_PIPELINE_DEFAULT_AGENT=${cfg.defaultAgent}
       VOICE_PIPELINE_DEEPGRAM_API_KEY_FILE=${cfg.deepgramApiKeyFile}
       VOICE_PIPELINE_OPENAI_API_KEY_FILE=${cfg.openaiApiKeyFile}
+      VOICE_PIPELINE_TTS_ENGINE=${cfg.ttsEngine}
       VOICE_PIPELINE_TTS_VOICE=${cfg.ttsVoice}
       VOICE_PIPELINE_WAKE_WORDS='${wakeWordsJson}'
       VOICE_PIPELINE_CONVERSATION_WINDOW_SECONDS=${toString cfg.conversationWindowSeconds}
