@@ -13,6 +13,7 @@ _load_env_file()
 
 from config import VoicePipelineConfig
 from adapters.silero_vad import SileroVad
+from adapters.sounddevice_audio import SounddevicePlayback
 from adapters.deepgram_stt import DeepgramStreamingTranscriber
 from adapters.openai_whisper_stt import OpenAIWhisperTranscriber
 from adapters.openclaw_llm import OpenClawCompletion
@@ -112,6 +113,38 @@ class BufferPlayback:
             wf.setsampwidth(2)
             wf.setframerate(sample_rate)
             wf.writeframes(b"".join(self._chunks))
+
+
+class SpeakerPlaybackWithTracking:
+    def __init__(self, sample_rate: int = 24000) -> None:
+        self._speaker = SounddevicePlayback(sample_rate=sample_rate)
+        self._total_bytes_played = 0
+        self._chunk_count = 0
+
+    @property
+    def total_bytes(self) -> int:
+        return self._total_bytes_played
+
+    @property
+    def chunk_count(self) -> int:
+        return self._chunk_count
+
+    async def start(self) -> None:
+        await self._speaker.start()
+
+    async def stop(self) -> None:
+        await self._speaker.stop()
+
+    async def play_chunk(self, audio_data: bytes) -> None:
+        self._total_bytes_played += len(audio_data)
+        self._chunk_count += 1
+        await self._speaker.play_chunk(audio_data)
+
+    async def drain(self) -> None:
+        await self._speaker.drain()
+
+    async def cancel(self) -> None:
+        await self._speaker.cancel()
 
 
 def load_config() -> VoicePipelineConfig:
@@ -250,9 +283,10 @@ class TestE2EWithRecordings:
         await run_pipeline_with_timeout(pipeline)
 
         assert pipeline.state in (
+            PipelineState.SPEAKING,
             PipelineState.CONVERSING,
             PipelineState.AMBIENT,
-        ), f"Expected CONVERSING or AMBIENT after response, got {pipeline.state.name}"
+        ), f"Expected SPEAKING/CONVERSING/AMBIENT after response, got {pipeline.state.name}"
 
         assert playback.total_bytes > 0, "Expected TTS audio output but got nothing"
         assert len(playback.played_chunks) >= 1, "Expected at least one TTS chunk"
@@ -341,3 +375,87 @@ class TestE2EWithRecordings:
         await run_pipeline_with_timeout(pipeline, timeout=20.0)
 
         assert playback.total_bytes == 0, "Expected no TTS output for speech without wake word"
+
+
+def build_audible_e2e_pipeline(
+    wav_path: Path,
+    config: VoicePipelineConfig,
+    gateway_token: str,
+    openai_api_key: str,
+    deepgram_api_key: str,
+) -> tuple[VoicePipeline, SpeakerPlaybackWithTracking]:
+    capture = WavFileCapture(wav_path, post_silence_seconds=10.0)
+    playback = SpeakerPlaybackWithTracking()
+    vad = SileroVad(model_path=config.vad_model_path, sample_rate=config.sample_rate)
+
+    if config.stt_engine == "deepgram":
+        transcriber = DeepgramStreamingTranscriber(
+            api_key=deepgram_api_key,
+            sample_rate=config.sample_rate,
+        )
+    else:
+        transcriber = OpenAIWhisperTranscriber(
+            api_key=openai_api_key,
+            sample_rate=config.sample_rate,
+        )
+
+    completion = OpenClawCompletion(
+        gateway_url=config.gateway_url,
+        token=gateway_token,
+        model=config.model,
+    )
+    synthesizer = OpenAITtsSynthesizer(api_key=openai_api_key)
+    speech_detector = SpeechDetector(
+        vad=vad,
+        threshold=config.vad_threshold,
+        min_silence_ms=config.vad_min_silence_ms,
+        frame_duration_ms=config.frame_duration_ms,
+    )
+
+    pipeline = VoicePipeline(
+        capture=capture,
+        playback=playback,
+        transcriber=transcriber,
+        completion=completion,
+        synthesizer=synthesizer,
+        speech_detector=speech_detector,
+        wake_word_detector=WakeWordDetector(config.wake_words),
+        conversation=ConversationHistory(max_turns=config.max_history_turns),
+        default_agent=config.default_agent,
+        conversation_window_seconds=config.conversation_window_seconds,
+        barge_in_enabled=False,
+        agent_voice_map=config.agent_voices,
+        barge_in_min_speech_ms=config.barge_in_min_speech_ms,
+        frame_duration_ms=config.frame_duration_ms,
+    )
+
+    return pipeline, playback
+
+
+@pytest.mark.slow
+class TestAudibleE2E:
+    @pytest.mark.asyncio
+    async def test_wake_word_plays_response_through_speakers(self):
+        config = load_config()
+        gateway_token, openai_api_key, deepgram_api_key = require_api_keys(config)
+        wav_path = require_recording("wake_jarvis_weather")
+
+        pipeline, playback = build_audible_e2e_pipeline(
+            wav_path, config, gateway_token, openai_api_key, deepgram_api_key,
+        )
+
+        await run_pipeline_with_timeout(pipeline, timeout=60.0)
+
+        assert pipeline.state in (
+            PipelineState.SPEAKING,
+            PipelineState.CONVERSING,
+            PipelineState.AMBIENT,
+        ), f"Expected pipeline to reach SPEAKING or beyond, got {pipeline.state.name}"
+
+        assert playback.total_bytes > 0, "No audio was played through speakers"
+        assert playback.chunk_count >= 1, "Expected at least one audio chunk played"
+
+        audio_duration_seconds = playback.total_bytes / (24000 * 2)
+        assert audio_duration_seconds > 0.5, (
+            f"Audio too short ({audio_duration_seconds:.1f}s), expected at least 0.5s of speech"
+        )
