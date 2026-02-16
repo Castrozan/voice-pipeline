@@ -384,7 +384,7 @@ def build_audible_e2e_pipeline(
     openai_api_key: str,
     deepgram_api_key: str,
 ) -> tuple[VoicePipeline, SpeakerPlaybackWithTracking]:
-    capture = WavFileCapture(wav_path, post_silence_seconds=10.0)
+    capture = WavFileCapture(wav_path, post_silence_seconds=60.0)
     playback = SpeakerPlaybackWithTracking()
     vad = SileroVad(model_path=config.vad_model_path, sample_rate=config.sample_rate)
 
@@ -437,14 +437,16 @@ class TestAudibleE2E:
     @pytest.mark.asyncio
     async def test_wake_word_plays_response_through_speakers(self):
         config = load_config()
+        config.default_agent = "robson"
+        config.wake_words = ["jarvis", "robson"]
         gateway_token, openai_api_key, deepgram_api_key = require_api_keys(config)
-        wav_path = require_recording("wake_jarvis_weather")
+        wav_path = require_recording("wake_robson_command")
 
         pipeline, playback = build_audible_e2e_pipeline(
             wav_path, config, gateway_token, openai_api_key, deepgram_api_key,
         )
 
-        await run_pipeline_with_timeout(pipeline, timeout=60.0)
+        await run_pipeline_with_timeout(pipeline, timeout=90.0)
 
         assert pipeline.state in (
             PipelineState.SPEAKING,
