@@ -45,18 +45,20 @@ def pipeline():
     )
 
 
-class TestSmartUtteranceProcessing:
+class TestUtteranceProcessingWaitsForSpeechEnd:
     @pytest.mark.asyncio
-    async def test_punctuated_final_processes_immediately(self, pipeline):
+    async def test_final_with_punctuation_schedules_flush_not_immediate(self, pipeline):
         pipeline._state = PipelineState.LISTENING
         pipeline._process_utterance = AsyncMock()
 
         await pipeline._handle_transcript(TranscriptEvent(text="What's the weather?", is_final=True))
 
-        pipeline._process_utterance.assert_called_once()
+        pipeline._process_utterance.assert_not_called()
+        assert pipeline._utterance_buffer == ["What's the weather?"]
+        assert pipeline._utterance_flush_task is not None
 
     @pytest.mark.asyncio
-    async def test_unpunctuated_final_does_not_process_immediately(self, pipeline):
+    async def test_final_without_punctuation_schedules_flush(self, pipeline):
         pipeline._state = PipelineState.LISTENING
         pipeline._process_utterance = AsyncMock()
 
@@ -64,22 +66,26 @@ class TestSmartUtteranceProcessing:
 
         pipeline._process_utterance.assert_not_called()
         assert pipeline._utterance_buffer == ["what's the weather"]
+        assert pipeline._utterance_flush_task is not None
 
     @pytest.mark.asyncio
-    async def test_unpunctuated_final_flushes_on_speech_end(self, pipeline):
+    async def test_flush_fires_after_speech_end_then_final(self, pipeline):
         pipeline._state = PipelineState.LISTENING
-        original_process = pipeline._process_utterance
 
-        await pipeline._handle_transcript(TranscriptEvent(text="what's the weather", is_final=True))
+        await pipeline._handle_transcript(TranscriptEvent(text="what's the weather", is_final=False))
+        pipeline._schedule_utterance_flush()
 
-        assert pipeline._utterance_flush_task is not None
         pipeline._speech_ended_event.set()
+        await asyncio.sleep(0.15)
+        assert pipeline._waiting_for_final_after_speech_end is True
+
+        await pipeline._handle_transcript(TranscriptEvent(text="what's the weather?", is_final=True))
         await asyncio.sleep(0.05)
 
-        assert pipeline._state == PipelineState.THINKING or pipeline._state == PipelineState.SPEAKING
+        assert pipeline._state in (PipelineState.THINKING, PipelineState.SPEAKING, PipelineState.CONVERSING)
 
     @pytest.mark.asyncio
-    async def test_multiple_finals_accumulate_until_punctuation(self, pipeline):
+    async def test_multiple_finals_accumulate_in_buffer(self, pipeline):
         pipeline._state = PipelineState.LISTENING
         pipeline._process_utterance = AsyncMock()
 
@@ -88,23 +94,23 @@ class TestSmartUtteranceProcessing:
         assert pipeline._utterance_buffer == ["I was wondering"]
 
         await pipeline._handle_transcript(TranscriptEvent(text="about the weather today.", is_final=True))
-        pipeline._process_utterance.assert_called_once()
+        pipeline._process_utterance.assert_not_called()
+        assert pipeline._utterance_buffer == ["I was wondering", "about the weather today."]
 
     @pytest.mark.asyncio
-    async def test_exclamation_mark_triggers_processing(self, pipeline):
+    async def test_final_after_speech_end_triggers_processing(self, pipeline):
         pipeline._state = PipelineState.LISTENING
-        pipeline._process_utterance = AsyncMock()
 
-        await pipeline._handle_transcript(TranscriptEvent(text="Stop right there!", is_final=True))
-        pipeline._process_utterance.assert_called_once()
+        await pipeline._handle_transcript(TranscriptEvent(text="I was wondering", is_final=False))
+        pipeline._schedule_utterance_flush()
 
-    @pytest.mark.asyncio
-    async def test_period_triggers_processing(self, pipeline):
-        pipeline._state = PipelineState.LISTENING
-        pipeline._process_utterance = AsyncMock()
+        pipeline._speech_ended_event.set()
+        await asyncio.sleep(0.15)
 
-        await pipeline._handle_transcript(TranscriptEvent(text="Turn on the lights.", is_final=True))
-        pipeline._process_utterance.assert_called_once()
+        await pipeline._handle_transcript(TranscriptEvent(text="I was wondering about the weather today.", is_final=True))
+        await asyncio.sleep(0.05)
+
+        assert pipeline._state in (PipelineState.THINKING, PipelineState.SPEAKING, PipelineState.CONVERSING)
 
     @pytest.mark.asyncio
     async def test_interim_does_not_trigger_processing(self, pipeline):
@@ -125,9 +131,9 @@ class TestSmartUtteranceProcessing:
         assert pipeline._utterance_buffer == ["hello"]
 
 
-class TestWakeWordWithSmartProcessing:
+class TestWakeWordSchedulesFlush:
     @pytest.mark.asyncio
-    async def test_wake_word_with_punctuated_command_processes(self, pipeline):
+    async def test_wake_word_with_command_schedules_flush(self, pipeline):
         pipeline._state = PipelineState.AMBIENT
         pipeline._process_utterance = AsyncMock()
 
@@ -135,10 +141,26 @@ class TestWakeWordWithSmartProcessing:
             TranscriptEvent(text="Jarvis, what time is it?", is_final=True)
         )
 
-        pipeline._process_utterance.assert_called_once()
+        pipeline._process_utterance.assert_not_called()
+        assert pipeline._state == PipelineState.LISTENING
+        assert pipeline._utterance_flush_task is not None
 
     @pytest.mark.asyncio
-    async def test_wake_word_with_unpunctuated_command_waits(self, pipeline):
+    async def test_wake_word_flushes_on_speech_end(self, pipeline):
+        pipeline._state = PipelineState.AMBIENT
+
+        await pipeline._handle_transcript(
+            TranscriptEvent(text="Jarvis, what time is it?", is_final=True)
+        )
+
+        assert pipeline._state == PipelineState.LISTENING
+        pipeline._speech_ended_event.set()
+        await asyncio.sleep(0.05)
+
+        assert pipeline._state in (PipelineState.THINKING, PipelineState.SPEAKING, PipelineState.CONVERSING)
+
+    @pytest.mark.asyncio
+    async def test_wake_word_without_command_waits(self, pipeline):
         pipeline._state = PipelineState.AMBIENT
         pipeline._process_utterance = AsyncMock()
 
@@ -150,9 +172,9 @@ class TestWakeWordWithSmartProcessing:
         assert pipeline._state == PipelineState.LISTENING
 
 
-class TestConversationWindowSmartProcessing:
+class TestConversationWindowSchedulesFlush:
     @pytest.mark.asyncio
-    async def test_conversing_punctuated_processes(self, pipeline):
+    async def test_conversing_schedules_flush_not_immediate(self, pipeline):
         pipeline._state = PipelineState.CONVERSING
         pipeline._conversation_window_task = asyncio.create_task(asyncio.sleep(100))
         pipeline._process_utterance = AsyncMock()
@@ -161,7 +183,23 @@ class TestConversationWindowSmartProcessing:
             TranscriptEvent(text="And one more thing.", is_final=True)
         )
 
-        pipeline._process_utterance.assert_called_once()
+        pipeline._process_utterance.assert_not_called()
+        assert pipeline._state == PipelineState.LISTENING
+        assert pipeline._utterance_flush_task is not None
+
+    @pytest.mark.asyncio
+    async def test_conversing_flushes_on_speech_end(self, pipeline):
+        pipeline._state = PipelineState.CONVERSING
+        pipeline._conversation_window_task = asyncio.create_task(asyncio.sleep(100))
+
+        await pipeline._handle_transcript(
+            TranscriptEvent(text="And one more thing.", is_final=True)
+        )
+
+        pipeline._speech_ended_event.set()
+        await asyncio.sleep(0.05)
+
+        assert pipeline._state in (PipelineState.THINKING, PipelineState.SPEAKING, PipelineState.CONVERSING)
 
     @pytest.mark.asyncio
     async def test_conversing_unpunctuated_waits(self, pipeline):

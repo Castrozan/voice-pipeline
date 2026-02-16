@@ -58,6 +58,10 @@ class VoicePipeline:
         self._state = PipelineState.AMBIENT
         self._enabled = True
         self._running = False
+        self._stt_session_active = False
+        self._stt_generation = 0
+        self._processed_generation = -1
+        self._waiting_for_final_after_speech_end = False
         self._utterance_buffer: list[str] = []
         self._has_pending_interim: bool = False
         self._spoken_text_buffer: str = ""
@@ -129,15 +133,18 @@ class VoicePipeline:
         await self._capture.stop()
         await self._playback.stop()
 
+    async def _close_stt_session(self) -> None:
+        self._processed_generation = self._stt_generation
+        if self._stt_session_active:
+            await self._transcriber.close_session()
+            self._stt_session_active = False
+
     async def _audio_loop(self) -> None:
-        stt_session_active = False
         pre_buffer: collections.deque[bytes] = collections.deque(maxlen=self._pre_buffer_frames)
 
         async for frame in self._capture.read_frames():
             if not self._running or not self._enabled:
-                if stt_session_active:
-                    await self._transcriber.close_session()
-                    stt_session_active = False
+                await self._close_stt_session()
                 pre_buffer.clear()
                 continue
 
@@ -155,22 +162,23 @@ class VoicePipeline:
                         await self._handle_barge_in()
                         self._barge_in_speech_frames = 0
 
-                if not stt_session_active and self._state in (
+                if not self._stt_session_active and self._state in (
                     PipelineState.AMBIENT,
                     PipelineState.LISTENING,
                     PipelineState.CONVERSING,
                 ):
+                    self._stt_generation += 1
                     await self._transcriber.start_session()
-                    stt_session_active = True
+                    self._stt_session_active = True
                     for buffered_frame in pre_buffer:
                         await self._transcriber.send_audio(buffered_frame)
                     pre_buffer.clear()
 
-                if stt_session_active:
+                if self._stt_session_active:
                     await self._transcriber.send_audio(frame)
             else:
                 self._barge_in_speech_frames = 0
-                if stt_session_active:
+                if self._stt_session_active:
                     await self._transcriber.send_audio(frame)
                 else:
                     pre_buffer.append(frame)
@@ -182,6 +190,9 @@ class VoicePipeline:
             await self._handle_transcript(event)
 
     async def _handle_transcript(self, event: TranscriptEvent) -> None:
+        if self._stt_generation <= self._processed_generation:
+            return
+
         if not event.text.strip():
             return
 
@@ -202,13 +213,7 @@ class VoicePipeline:
                 self._transition_to(PipelineState.LISTENING)
                 self._utterance_buffer = [post_wake_text] if post_wake_text else []
                 self._has_pending_interim = bool(post_wake_text) and not event.is_final
-
-                if event.is_final and post_wake_text:
-                    stripped = post_wake_text.strip()
-                    if stripped and stripped[-1] in ".!?":
-                        await self._process_utterance()
-                    else:
-                        self._schedule_utterance_flush()
+                self._schedule_utterance_flush()
 
         elif self._state == PipelineState.LISTENING:
             if event.is_final:
@@ -218,8 +223,9 @@ class VoicePipeline:
                 else:
                     self._utterance_buffer.append(event.text)
 
-                accumulated = " ".join(self._utterance_buffer).strip()
-                if accumulated and accumulated[-1] in ".!?":
+                if self._waiting_for_final_after_speech_end:
+                    self._waiting_for_final_after_speech_end = False
+                    self._cancel_utterance_flush()
                     await self._process_utterance()
                 else:
                     self._schedule_utterance_flush()
@@ -235,13 +241,7 @@ class VoicePipeline:
             self._transition_to(PipelineState.LISTENING)
             self._utterance_buffer = [event.text]
             self._has_pending_interim = not event.is_final
-
-            if event.is_final:
-                accumulated = event.text.strip()
-                if accumulated and accumulated[-1] in ".!?":
-                    await self._process_utterance()
-                else:
-                    self._schedule_utterance_flush()
+            self._schedule_utterance_flush()
 
     async def _process_utterance(self) -> None:
         self._cancel_utterance_flush()
@@ -254,6 +254,7 @@ class VoicePipeline:
 
         logger.info("Utterance: %s", full_text)
         self._transition_to(PipelineState.THINKING)
+        await self._close_stt_session()
         self._conversation.add_user_message(full_text)
 
         try:
@@ -324,14 +325,30 @@ class VoicePipeline:
 
     def _cancel_utterance_flush(self) -> None:
         if self._utterance_flush_task and not self._utterance_flush_task.done():
-            self._utterance_flush_task.cancel()
+            if self._utterance_flush_task is not asyncio.current_task():
+                self._utterance_flush_task.cancel()
             self._utterance_flush_task = None
 
     async def _wait_for_speech_end_then_flush(self) -> None:
         try:
             await self._speech_ended_event.wait()
             self._speech_ended_event.clear()
+            if self._state != PipelineState.LISTENING:
+                return
+
+            if self._utterance_buffer and not self._has_pending_interim:
+                await self._process_utterance()
+                return
+
+            self._waiting_for_final_after_speech_end = True
+            for _ in range(30):
+                await asyncio.sleep(0.1)
+                if self._state != PipelineState.LISTENING:
+                    return
+                if not self._waiting_for_final_after_speech_end:
+                    return
             if self._state == PipelineState.LISTENING and self._utterance_buffer:
+                self._waiting_for_final_after_speech_end = False
                 await self._process_utterance()
         except asyncio.CancelledError:
             pass
@@ -362,6 +379,7 @@ class VoicePipeline:
         self._utterance_buffer.clear()
         self._has_pending_interim = False
         self._last_interim_text = ""
+        self._waiting_for_final_after_speech_end = False
         self._speech_detector.reset()
         self._speech_ended_event.clear()
         self._cancel_utterance_flush()

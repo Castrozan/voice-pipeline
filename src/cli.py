@@ -79,7 +79,7 @@ def main() -> None:
     else:
         file_handler = logging.FileHandler(config.log_file, mode="w")
         file_handler.setLevel(log_level)
-        file_handler.setFormatter(ColoredFormatter(datefmt=log_datefmt))
+        file_handler.setFormatter(logging.Formatter(fmt=log_format, datefmt=log_datefmt))
         logging.getLogger().addHandler(file_handler)
         asyncio.run(_run_daemon(config))
 

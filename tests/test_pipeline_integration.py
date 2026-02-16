@@ -369,8 +369,12 @@ class TestFullPipelineFlow:
         await pipeline._handle_transcript(
             TranscriptEvent(text="Jarvis, what is the weather?", is_final=True)
         )
+        pipeline._speech_ended_event.set()
 
-        await asyncio.sleep(0.1)
+        for _ in range(20):
+            await asyncio.sleep(0.1)
+            if PipelineState.CONVERSING in observed_states:
+                break
 
         assert PipelineState.LISTENING in observed_states, (
             f"Expected LISTENING in states, got {observed_states}"
@@ -399,8 +403,9 @@ class TestFullPipelineFlow:
         await pipeline._handle_transcript(
             TranscriptEvent(text="Jarvis, tell me a joke.", is_final=True)
         )
+        pipeline._speech_ended_event.set()
 
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0.2)
 
         assert completion._call_count >= 1, (
             f"Expected completion to be called, got {completion._call_count} calls"
@@ -422,8 +427,9 @@ class TestFullPipelineFlow:
         await pipeline._handle_transcript(
             TranscriptEvent(text="Jarvis, what time is it?", is_final=True)
         )
+        pipeline._speech_ended_event.set()
 
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0.2)
 
         messages = pipeline._conversation.to_api_messages()
         user_messages = [m for m in messages if m["role"] == "user"]
