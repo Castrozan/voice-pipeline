@@ -109,6 +109,9 @@ class SounddeviceCapture:
         return None
 
 
+PLAYBACK_BLOCK_SIZE = 1024
+
+
 class SounddevicePlayback:
     def __init__(self, sample_rate: int = 24000) -> None:
         self._sample_rate = sample_rate
@@ -125,6 +128,7 @@ class SounddevicePlayback:
             samplerate=self._sample_rate,
             channels=1,
             dtype="int16",
+            blocksize=PLAYBACK_BLOCK_SIZE,
         )
         self._stream.start()
         self._play_task = asyncio.create_task(self._playback_loop())
@@ -183,9 +187,13 @@ class SounddevicePlayback:
                 continue
             if self._stream:
                 audio_array = np.frombuffer(chunk, dtype=np.int16)
-                try:
-                    await loop.run_in_executor(
-                        None, self._stream.write, audio_array.reshape(-1, 1)
-                    )
-                except sd.PortAudioError:
-                    logger.warning("Playback write error")
+                for block_offset in range(0, len(audio_array), PLAYBACK_BLOCK_SIZE):
+                    if self._cancelled:
+                        break
+                    block = audio_array[block_offset : block_offset + PLAYBACK_BLOCK_SIZE]
+                    try:
+                        await loop.run_in_executor(
+                            None, self._stream.write, block.reshape(-1, 1)
+                        )
+                    except sd.PortAudioError:
+                        logger.warning("Playback write error")
