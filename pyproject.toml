@@ -15,6 +15,7 @@ dependencies = [
   "anthropic>=0.34",
   "janus>=1.0",
   "edge-tts>=7.2.7",
+  "miniaudio>=1.61",
 ]
 
 [project.scripts]

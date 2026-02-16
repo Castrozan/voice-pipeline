@@ -2,32 +2,19 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator
 
+import miniaudio
 from edge_tts import Communicate
 
 logger = logging.getLogger(__name__)
 
-FFMPEG_DECODE_COMMAND = [
-    "ffmpeg",
-    "-i",
-    "pipe:0",
-    "-f",
-    "s16le",
-    "-acodec",
-    "pcm_s16le",
-    "-ar",
-    "24000",
-    "-ac",
-    "1",
-    "-loglevel",
-    "error",
-    "pipe:1",
-]
+PLAYBACK_SAMPLE_RATE = 24000
+PLAYBACK_CHANNELS = 1
+PCM_CHUNK_SIZE = 4096
 
 
 class EdgeTtsSynthesizer:
     def __init__(self) -> None:
         self._cancelled = False
-        self._process: asyncio.subprocess.Process | None = None
 
     async def synthesize(
         self, text: str, voice: str = "en-US-GuyNeural"
@@ -35,61 +22,37 @@ class EdgeTtsSynthesizer:
         self._cancelled = False
 
         try:
-            self._process = await asyncio.create_subprocess_exec(
-                *FFMPEG_DECODE_COMMAND,
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
+            mp3_chunks: list[bytes] = []
+            communicate = Communicate(text, voice=voice)
+            async for chunk in communicate.stream():
+                if self._cancelled:
+                    return
+                if chunk["type"] == "audio" and chunk["data"]:
+                    mp3_chunks.append(chunk["data"])
 
-            feed_task = asyncio.create_task(
-                self._feed_mp3_to_ffmpeg(text, voice),
-            )
+            if self._cancelled or not mp3_chunks:
+                return
 
-            try:
-                while not self._cancelled:
-                    chunk = await self._process.stdout.read(4096)
-                    if not chunk:
-                        break
-                    yield chunk
-            finally:
-                feed_task.cancel()
-                try:
-                    await feed_task
-                except asyncio.CancelledError:
-                    pass
-                if self._process and self._process.returncode is None:
-                    self._process.kill()
-                    await self._process.wait()
-                self._process = None
+            mp3_data = b"".join(mp3_chunks)
+            decoded = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: miniaudio.decode(
+                    mp3_data,
+                    output_format=miniaudio.SampleFormat.SIGNED16,
+                    nchannels=PLAYBACK_CHANNELS,
+                    sample_rate=PLAYBACK_SAMPLE_RATE,
+                ),
+            )
+            pcm_data = decoded.samples.tobytes()
+
+            for offset in range(0, len(pcm_data), PCM_CHUNK_SIZE):
+                if self._cancelled:
+                    return
+                yield pcm_data[offset : offset + PCM_CHUNK_SIZE]
 
         except Exception:
             if not self._cancelled:
                 logger.exception("Edge TTS synthesis failed for: %s", text[:50])
 
-    async def _feed_mp3_to_ffmpeg(self, text: str, voice: str) -> None:
-        try:
-            communicate = Communicate(text, voice=voice)
-            async for chunk in communicate.stream():
-                if self._cancelled:
-                    break
-                if chunk["type"] == "audio" and chunk["data"]:
-                    self._process.stdin.write(chunk["data"])
-                    await self._process.stdin.drain()
-        except asyncio.CancelledError:
-            pass
-        except Exception:
-            if not self._cancelled:
-                logger.exception("Edge TTS stream failed")
-        finally:
-            try:
-                if self._process and self._process.stdin:
-                    self._process.stdin.close()
-                    await self._process.stdin.wait_closed()
-            except Exception:
-                pass
-
     async def cancel(self) -> None:
         self._cancelled = True
-        if self._process and self._process.returncode is None:
-            self._process.kill()
