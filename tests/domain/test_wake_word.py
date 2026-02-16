@@ -40,3 +40,33 @@ class TestWakeWordDetector:
 
     def test_partial_word_not_detected(self):
         assert self.detector.detect("jarvislike behavior") is None
+
+    def test_phonetic_alternative_rabson_detects_as_robson(self):
+        assert self.detector.detect("Hey, Rabson. Can you hear me?") == "robson"
+
+    def test_phonetic_alternative_jarvus_detects_as_jarvis(self):
+        assert self.detector.detect("jarvus what time is it") == "jarvis"
+
+    def test_phonetic_alternative_jervis_detects_as_jarvis(self):
+        assert self.detector.detect("hey jervis please") == "jarvis"
+
+    def test_phonetic_alternative_robsen_detects_as_robson(self):
+        assert self.detector.detect("hello robsen") == "robson"
+
+    def test_phonetic_alternative_rabs_detects_as_robson(self):
+        assert self.detector.detect("rabs turn off the lights") == "robson"
+
+    def test_phonetic_alternative_extracts_post_wake_text(self):
+        result = self.detector.extract_post_wake_word_text("Rabson, can you hear me?")
+        assert result == ", can you hear me?"
+
+    def test_phonetic_alternative_case_insensitive(self):
+        assert self.detector.detect("RABSON what is up") == "robson"
+
+    def test_unknown_word_without_alternatives_still_works(self):
+        detector = WakeWordDetector(["customword"])
+        assert detector.detect("hey customword do something") == "customword"
+
+    def test_jenny_alternative_jenni_detects(self):
+        detector = WakeWordDetector(["jenny"])
+        assert detector.detect("hey jenni what's up") == "jenny"
