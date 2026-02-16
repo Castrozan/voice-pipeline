@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from collections.abc import AsyncIterator
 
 from deepgram import AsyncDeepgramClient
@@ -9,6 +10,8 @@ from deepgram.listen.v1.socket_client import EventType
 from ports.transcriber import TranscriptEvent
 
 logger = logging.getLogger(__name__)
+
+SEND_AUDIO_WARNING_INTERVAL_SECONDS = 5.0
 
 
 class DeepgramStreamingTranscriber:
@@ -20,6 +23,8 @@ class DeepgramStreamingTranscriber:
         self._transcript_queue: asyncio.Queue[TranscriptEvent] = asyncio.Queue()
         self._session_active = False
         self._listener_task: asyncio.Task | None = None
+        self._last_send_warning_time: float = 0.0
+        self._suppressed_send_warnings: int = 0
 
     async def start_session(self) -> None:
         if self._session_active:
@@ -50,7 +55,19 @@ class DeepgramStreamingTranscriber:
             try:
                 await self._socket._send(frame)
             except Exception:
-                logger.warning("Failed to send audio to Deepgram")
+                now = time.monotonic()
+                if now - self._last_send_warning_time >= SEND_AUDIO_WARNING_INTERVAL_SECONDS:
+                    if self._suppressed_send_warnings > 0:
+                        logger.warning(
+                            "Failed to send audio to Deepgram (%d warnings suppressed)",
+                            self._suppressed_send_warnings,
+                        )
+                    else:
+                        logger.warning("Failed to send audio to Deepgram")
+                    self._last_send_warning_time = now
+                    self._suppressed_send_warnings = 0
+                else:
+                    self._suppressed_send_warnings += 1
 
     async def get_transcripts(self) -> AsyncIterator[TranscriptEvent]:
         while True:
