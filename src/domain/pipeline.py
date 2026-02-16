@@ -13,6 +13,10 @@ from ports.synthesizer import SynthesizerPort
 
 logger = logging.getLogger(__name__)
 
+UTTERANCE_FLUSH_TIMEOUT_SECONDS = 3.0
+UTTERANCE_FLUSH_MAX_WAIT_SECONDS = 15.0
+INCOMPLETE_SENTENCE_GRACE_SECONDS = 2.0
+
 VOICE_SYSTEM_PROMPT = (
     "You are a voice assistant. Respond concisely for TTS playback, max 3 sentences. "
     "Match the spoken language (English or Portuguese). "
@@ -62,6 +66,7 @@ class VoicePipeline:
         self._stt_generation = 0
         self._processed_generation = -1
         self._waiting_for_final_after_speech_end = False
+        self._flush_deadline: float = 0.0
         self._utterance_buffer: list[str] = []
         self._has_pending_interim: bool = False
         self._spoken_text_buffer: str = ""
@@ -156,6 +161,15 @@ class VoicePipeline:
             if event.is_speech:
                 self._speech_ended_event.clear()
 
+                if (
+                    event == SpeechEvent.SPEECH_START
+                    and self._state == PipelineState.LISTENING
+                    and self._waiting_for_final_after_speech_end
+                ):
+                    logger.info("Flush: speech restarted while waiting, rescheduling")
+                    self._waiting_for_final_after_speech_end = False
+                    self._schedule_utterance_flush()
+
                 if self._state == PipelineState.SPEAKING and self._barge_in_enabled:
                     self._barge_in_speech_frames += 1
                     if self._barge_in_speech_frames >= self._barge_in_min_frames:
@@ -224,9 +238,15 @@ class VoicePipeline:
                     self._utterance_buffer.append(event.text)
 
                 if self._waiting_for_final_after_speech_end:
-                    self._waiting_for_final_after_speech_end = False
-                    self._cancel_utterance_flush()
-                    await self._process_utterance()
+                    full_text = " ".join(self._utterance_buffer).strip()
+                    if _transcript_ends_with_sentence_punctuation(full_text):
+                        logger.info("Flush: final with sentence punctuation, processing now")
+                        self._waiting_for_final_after_speech_end = False
+                        self._cancel_utterance_flush()
+                        await self._process_utterance()
+                    else:
+                        logger.info("Flush: final without punctuation '%s', grace %.1fs", full_text[-40:], INCOMPLETE_SENTENCE_GRACE_SECONDS)
+                        self._flush_deadline = asyncio.get_event_loop().time() + INCOMPLETE_SENTENCE_GRACE_SECONDS
                 else:
                     self._schedule_utterance_flush()
             else:
@@ -235,6 +255,9 @@ class VoicePipeline:
                 else:
                     self._utterance_buffer.append(event.text)
                     self._has_pending_interim = True
+                if self._waiting_for_final_after_speech_end:
+                    logger.debug("Flush: interim extended deadline by %.1fs", UTTERANCE_FLUSH_TIMEOUT_SECONDS)
+                    self._flush_deadline = asyncio.get_event_loop().time() + UTTERANCE_FLUSH_TIMEOUT_SECONDS
 
         elif self._state == PipelineState.CONVERSING:
             self._cancel_conversation_window()
@@ -336,12 +359,19 @@ class VoicePipeline:
             if self._state != PipelineState.LISTENING:
                 return
 
+            full_text = " ".join(self._utterance_buffer).strip()
             if self._utterance_buffer and not self._has_pending_interim:
-                await self._process_utterance()
-                return
+                if _transcript_ends_with_sentence_punctuation(full_text):
+                    logger.info("Flush: complete sentence on speech end, processing now")
+                    await self._process_utterance()
+                    return
+                logger.info("Flush: incomplete sentence on speech end '%s', waiting for more", full_text[-40:])
 
             self._waiting_for_final_after_speech_end = True
-            for _ in range(30):
+            loop = asyncio.get_event_loop()
+            self._flush_deadline = loop.time() + UTTERANCE_FLUSH_TIMEOUT_SECONDS
+            max_deadline = loop.time() + UTTERANCE_FLUSH_MAX_WAIT_SECONDS
+            while loop.time() < self._flush_deadline and loop.time() < max_deadline:
                 await asyncio.sleep(0.1)
                 if self._state != PipelineState.LISTENING:
                     return
@@ -349,6 +379,7 @@ class VoicePipeline:
                     return
             if self._state == PipelineState.LISTENING and self._utterance_buffer:
                 self._waiting_for_final_after_speech_end = False
+                logger.info("Flush: deadline expired, processing what we have")
                 await self._process_utterance()
         except asyncio.CancelledError:
             pass
@@ -380,10 +411,16 @@ class VoicePipeline:
         self._has_pending_interim = False
         self._last_interim_text = ""
         self._waiting_for_final_after_speech_end = False
+        self._flush_deadline = 0.0
         self._speech_detector.reset()
         self._speech_ended_event.clear()
         self._cancel_utterance_flush()
         self._cancel_conversation_window()
+
+
+def _transcript_ends_with_sentence_punctuation(text: str) -> bool:
+    stripped = text.rstrip()
+    return bool(stripped) and stripped[-1] in ".!?"
 
 
 def _find_sentence_boundary(text: str) -> int:
