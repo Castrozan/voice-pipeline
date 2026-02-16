@@ -44,7 +44,12 @@ class VoicePipelineConfig(BaseSettings):
 
     model: str = "anthropic/claude-sonnet-4-5"
 
-    system_prompt: str = ""
+    system_prompt: str = (
+        "This is a voice conversation via microphone and TTS. "
+        "Respond concisely, max 3 sentences. "
+        "Match the spoken language (English or Portuguese). "
+        "Never include markdown, file paths, code blocks, URLs, or any formatting."
+    )
 
     def read_secret(self, path: str) -> str:
         if not path:

@@ -85,8 +85,8 @@ in
 
     systemPrompt = lib.mkOption {
       type = lib.types.str;
-      default = "";
-      description = "System prompt prepended to LLM messages. Empty = let the completion backend handle it (recommended for OpenClaw).";
+      default = "This is a voice conversation via microphone and TTS. Respond concisely, max 3 sentences. Match the spoken language (English or Portuguese). Never include markdown, file paths, code blocks, URLs, or any formatting.";
+      description = "System prompt prepended to LLM messages. Adds voice-specific formatting rules without overriding agent personality.";
     };
 
     agents = lib.mkOption {
