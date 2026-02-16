@@ -44,6 +44,8 @@ class VoicePipelineConfig(BaseSettings):
 
     model: str = "anthropic/claude-sonnet-4-5"
 
+    system_prompt: str = ""
+
     def read_secret(self, path: str) -> str:
         if not path:
             return ""

@@ -24,14 +24,18 @@ def create_capture(config: VoicePipelineConfig) -> SounddeviceCapture:
     )
 
 
-def create_transcriber(config: VoicePipelineConfig, deepgram_api_key: str, openai_api_key: str) -> TranscriberPort:
+def create_transcriber(
+    config: VoicePipelineConfig, deepgram_api_key: str, openai_api_key: str
+) -> TranscriberPort:
     if config.stt_engine == "deepgram":
         from adapters.deepgram_stt import DeepgramStreamingTranscriber
+
         return DeepgramStreamingTranscriber(
             api_key=deepgram_api_key,
             sample_rate=config.sample_rate,
         )
     from adapters.openai_whisper_stt import OpenAIWhisperTranscriber
+
     return OpenAIWhisperTranscriber(
         api_key=openai_api_key,
         sample_rate=config.sample_rate,
@@ -41,14 +45,17 @@ def create_transcriber(config: VoicePipelineConfig, deepgram_api_key: str, opena
 def create_completion(config: VoicePipelineConfig) -> CompletionPort:
     if config.completion_engine == "cli":
         from adapters.cli_completion import CliCompletion
+
         return CliCompletion(command=config.completion_cli_command)
 
     if config.completion_engine == "anthropic":
         from adapters.anthropic_llm import AnthropicCompletion
+
         anthropic_api_key = config.read_secret(config.anthropic_api_key_file)
         return AnthropicCompletion(api_key=anthropic_api_key, model=config.model)
 
     from adapters.openclaw_llm import OpenClawCompletion
+
     gateway_token = config.read_secret(config.gateway_token_file)
     return OpenClawCompletion(
         gateway_url=config.gateway_url,
@@ -61,7 +68,9 @@ def create_synthesizer(openai_api_key: str) -> OpenAITtsSynthesizer:
     return OpenAITtsSynthesizer(api_key=openai_api_key)
 
 
-def create_speech_detector(config: VoicePipelineConfig, vad: SileroVad) -> SpeechDetector:
+def create_speech_detector(
+    config: VoicePipelineConfig, vad: SileroVad
+) -> SpeechDetector:
     return SpeechDetector(
         vad=vad,
         threshold=config.vad_threshold,
@@ -70,7 +79,9 @@ def create_speech_detector(config: VoicePipelineConfig, vad: SileroVad) -> Speec
     )
 
 
-def create_pipeline(config: VoicePipelineConfig) -> tuple[VoicePipeline, UnixSocketControlServer]:
+def create_pipeline(
+    config: VoicePipelineConfig,
+) -> tuple[VoicePipeline, UnixSocketControlServer]:
     openai_api_key = config.read_secret(config.openai_api_key_file)
     deepgram_api_key = config.read_secret(config.deepgram_api_key_file)
 
@@ -101,6 +112,7 @@ def create_pipeline(config: VoicePipelineConfig) -> tuple[VoicePipeline, UnixSoc
         agent_voice_map=config.agent_voices,
         barge_in_min_speech_ms=config.barge_in_min_speech_ms,
         frame_duration_ms=config.frame_duration_ms,
+        system_prompt=config.system_prompt,
     )
 
     return pipeline, control

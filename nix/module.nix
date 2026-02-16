@@ -83,6 +83,12 @@ in
       default = true;
     };
 
+    systemPrompt = lib.mkOption {
+      type = lib.types.str;
+      default = "";
+      description = "System prompt prepended to LLM messages. Empty = let the completion backend handle it (recommended for OpenClaw).";
+    };
+
     agents = lib.mkOption {
       type = lib.types.attrsOf (
         lib.types.submodule {
@@ -112,6 +118,7 @@ in
       VOICE_PIPELINE_STT_ENGINE=${cfg.sttEngine}
       VOICE_PIPELINE_AGENT_VOICES='${agentVoicesJson}'
       VOICE_PIPELINE_MODEL=${cfg.model}
+      VOICE_PIPELINE_SYSTEM_PROMPT=${cfg.systemPrompt}
     '';
 
     systemd.user.services.voice-pipeline = {

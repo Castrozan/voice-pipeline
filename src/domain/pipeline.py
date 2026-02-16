@@ -17,12 +17,6 @@ UTTERANCE_FLUSH_TIMEOUT_SECONDS = 3.0
 UTTERANCE_FLUSH_MAX_WAIT_SECONDS = 15.0
 INCOMPLETE_SENTENCE_GRACE_SECONDS = 2.0
 
-VOICE_SYSTEM_PROMPT = (
-    "You are a voice assistant. Respond concisely for TTS playback, max 3 sentences. "
-    "Match the spoken language (English or Portuguese). "
-    "Never include file paths, code blocks, URLs, or technical formatting."
-)
-
 
 class VoicePipeline:
     def __init__(
@@ -42,6 +36,7 @@ class VoicePipeline:
         pre_buffer_ms: int = 300,
         barge_in_min_speech_ms: int = 200,
         frame_duration_ms: int = 16,
+        system_prompt: str = "",
     ) -> None:
         self._capture = capture
         self._playback = playback
@@ -53,6 +48,7 @@ class VoicePipeline:
         self._conversation = conversation
 
         self._agent = default_agent
+        self._system_prompt = system_prompt
         self._conversation_window_seconds = conversation_window_seconds
         self._barge_in_enabled = barge_in_enabled
         self._agent_voice_map = agent_voice_map or {}
@@ -313,7 +309,7 @@ class VoicePipeline:
 
         try:
             api_messages = self._conversation.to_api_messages(
-                system_prefix=VOICE_SYSTEM_PROMPT
+                system_prefix=self._system_prompt
             )
             response_chunks: list[str] = []
 
