@@ -1,4 +1,5 @@
 import asyncio
+import collections
 import wave
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -705,7 +706,7 @@ class TestBargeInWithRealVad:
         )
         assert pipeline._state == PipelineState.LISTENING
 
-    async def test_barge_in_speech_has_enough_sustained_frames_for_threshold(self, real_vad):
+    async def test_barge_in_recording_exceeds_sliding_window_speech_ratio(self, real_vad):
         path = BUILTIN_RECORDINGS_DIR / "barge_in_speech.wav"
         skip_if_missing(path)
 
@@ -717,23 +718,126 @@ class TestBargeInWithRealVad:
             frame_duration_ms=FRAME_DURATION_MS,
         )
 
-        barge_in_min_frames = int(200 / FRAME_DURATION_MS)
-        consecutive_speech_frames = 0
-        max_consecutive_speech_frames = 0
+        barge_in_window_size = int(200 / FRAME_DURATION_MS)
+        barge_in_speech_ratio_threshold = 0.7
+        window: collections.deque[bool] = collections.deque(maxlen=barge_in_window_size)
+        window_triggered = False
 
         for frame in frames:
             event = speech_detector.process_frame(frame)
-            if event.is_speech:
-                consecutive_speech_frames += 1
-                max_consecutive_speech_frames = max(
-                    max_consecutive_speech_frames, consecutive_speech_frames,
-                )
-            else:
-                consecutive_speech_frames = 0
+            window.append(event.is_speech)
+            if (
+                len(window) >= barge_in_window_size
+                and sum(window) / len(window) >= barge_in_speech_ratio_threshold
+            ):
+                window_triggered = True
+                break
 
-        assert max_consecutive_speech_frames >= barge_in_min_frames, (
-            f"Expected at least {barge_in_min_frames} consecutive speech frames "
-            f"for barge-in threshold, got {max_consecutive_speech_frames}"
+        assert window_triggered, (
+            f"Expected sliding window ({barge_in_window_size} frames, "
+            f"{barge_in_speech_ratio_threshold:.0%} threshold) to trigger "
+            f"on barge_in_speech.wav"
+        )
+
+    async def test_barge_in_during_chained_conversation_with_recordings(self, real_vad):
+        wake_path = BUILTIN_RECORDINGS_DIR / "short_complete_sentence.wav"
+        barge_path = BUILTIN_RECORDINGS_DIR / "barge_in_speech.wav"
+        skip_if_missing(wake_path)
+        skip_if_missing(barge_path)
+
+        wake_frames = load_recording_as_frames(wake_path)
+        silence_gap = generate_silence_frames(3000)
+        barge_frames = load_recording_as_frames(barge_path)
+        trailing_silence = generate_silence_frames(2000)
+        all_frames = wake_frames + silence_gap + barge_frames + trailing_silence
+
+        class SlowFakeCompletion:
+            def __init__(self) -> None:
+                self._cancelled = False
+                self._call_count = 0
+
+            async def stream(self, messages, agent) -> AsyncIterator[str]:
+                self._cancelled = False
+                self._call_count += 1
+                chunks = ["Well, ", "the current ", "time is ", "about ", "three ", "o'clock."]
+                for chunk in chunks:
+                    if self._cancelled:
+                        break
+                    yield chunk
+                    await asyncio.sleep(0.2)
+
+            async def cancel(self) -> None:
+                self._cancelled = True
+
+        transcriber = QueueBasedFakeTranscriber()
+        slow_completion = SlowFakeCompletion()
+        synthesizer = FakeSynthesizer()
+
+        speech_detector = SpeechDetector(
+            vad=real_vad,
+            threshold=0.5,
+            min_silence_ms=800,
+            frame_duration_ms=FRAME_DURATION_MS,
+        )
+
+        pipeline = VoicePipeline(
+            capture=YieldingFakeAudioCapture(all_frames, frame_delay_seconds=0.001),
+            playback=FakeAudioPlayback(),
+            transcriber=transcriber,
+            completion=slow_completion,
+            synthesizer=synthesizer,
+            speech_detector=speech_detector,
+            wake_word_detector=WakeWordDetector(["jarvis", "robson"]),
+            conversation=ConversationHistory(max_turns=20),
+            conversation_window_seconds=15.0,
+            barge_in_enabled=True,
+            barge_in_min_speech_ms=200,
+            frame_duration_ms=FRAME_DURATION_MS,
+        )
+        pipeline._running = True
+        pipeline._enabled = True
+
+        barge_in_count = 0
+        original_handle_barge_in = pipeline._handle_barge_in
+
+        async def counting_handle_barge_in():
+            nonlocal barge_in_count
+            barge_in_count += 1
+            await original_handle_barge_in()
+
+        pipeline._handle_barge_in = counting_handle_barge_in
+
+        async def director():
+            await wait_for_session_count(transcriber, 1)
+            transcriber.push_transcript(
+                "Hey Robson, what time is it?", is_final=True,
+            )
+
+            deadline = asyncio.get_event_loop().time() + 20.0
+            while asyncio.get_event_loop().time() < deadline:
+                if barge_in_count > 0 or slow_completion._call_count >= 1:
+                    break
+                await asyncio.sleep(0.01)
+
+            deadline = asyncio.get_event_loop().time() + 20.0
+            while asyncio.get_event_loop().time() < deadline:
+                if barge_in_count > 0:
+                    break
+                await asyncio.sleep(0.01)
+
+            await asyncio.sleep(0.2)
+            pipeline._running = False
+            transcriber.stop()
+
+        await asyncio.gather(
+            pipeline._audio_loop(),
+            pipeline._transcript_loop(),
+            director(),
+        )
+
+        assert slow_completion._call_count >= 1
+        assert barge_in_count >= 1, (
+            "Expected barge-in when barge_in_speech.wav plays during slow response"
         )
 
 
