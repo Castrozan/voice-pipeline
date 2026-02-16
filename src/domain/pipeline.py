@@ -233,6 +233,10 @@ class VoicePipeline:
                 logger.info(
                     "Wake word detected: '%s' in '%s'", detected_word, event.text
                 )
+                if detected_word != self._agent:
+                    self._agent = detected_word
+                    self._conversation.clear()
+                    logger.info("Agent switched to: %s", self._agent)
                 post_wake_text = self._wake_word_detector.extract_post_wake_word_text(
                     event.text
                 )
