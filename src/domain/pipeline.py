@@ -344,13 +344,14 @@ class VoicePipeline:
                 if self._state != PipelineState.SPEAKING:
                     break
 
+            full_response = "".join(response_chunks)
+            self._conversation.add_assistant_message(full_response)
+            logger.info("Response: %s", full_response)
+
             if sentence_buffer.strip() and self._state == PipelineState.SPEAKING:
                 await self._speak_sentence(sentence_buffer.strip())
 
             await self._playback.drain()
-            full_response = "".join(response_chunks)
-            self._conversation.add_assistant_message(full_response)
-            logger.info("Response complete (%d chars)", len(full_response))
 
             if self._state == PipelineState.SPEAKING:
                 self._transition_to(PipelineState.CONVERSING)
