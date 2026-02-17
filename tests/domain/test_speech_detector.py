@@ -1,7 +1,5 @@
-import pytest
-
-from domain.speech_detector import SpeechDetector, SpeechEvent
-from tests.conftest import FakeVad, generate_silence, FRAME_DURATION_MS
+from domain.speech_detector import SpeechEvent
+from tests.conftest import generate_silence, FRAME_DURATION_MS
 
 
 class TestSpeechDetectorEvents:

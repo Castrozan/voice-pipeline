@@ -15,8 +15,6 @@ class UnixSocketControlServer:
         self._socket_path = socket_path
         self._server: asyncio.Server | None = None
         self._command_queue: asyncio.Queue[ControlCommand] = asyncio.Queue()
-        self._pending_responses: dict[int, asyncio.Future] = {}
-        self._response_counter = 0
 
     async def start(self) -> None:
         socket_file = Path(self._socket_path)
@@ -42,9 +40,6 @@ class UnixSocketControlServer:
         while True:
             cmd = await self._command_queue.get()
             yield cmd
-
-    async def send_response(self, data: dict) -> None:
-        pass
 
     async def _handle_client(
         self,

@@ -1,12 +1,4 @@
-import pytest
-
 from audio_env import (
-    AudioDevice,
-    AudioEnvironment,
-    AudioNode,
-    AudioStream,
-    EchoCancelTopology,
-    StreamPort,
     _parse_wpctl_status,
     format_environment_report,
 )

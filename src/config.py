@@ -11,11 +11,9 @@ class VoicePipelineConfig(BaseSettings):
     default_agent: str = "jarvis"
 
     stt_engine: Literal["deepgram", "openai-whisper"] = "deepgram"
-    stt_mode: Literal["vad-gated", "always-streaming"] = "vad-gated"
     deepgram_api_key_file: str = ""
 
     tts_engine: Literal["openai", "edge-tts"] = "openai"
-    tts_voice: str = "onyx"
     openai_api_key_file: str = ""
 
     vad_threshold: float = 0.5

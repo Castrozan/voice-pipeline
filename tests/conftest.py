@@ -2,7 +2,6 @@ import asyncio
 import io
 import wave
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
 
 import numpy as np
 import pytest
@@ -232,30 +231,6 @@ class FakeSynthesizer:
 
     async def cancel(self) -> None:
         self._cancelled = True
-
-
-@pytest.fixture
-def silence_frames():
-    return [generate_silence() for _ in range(10)]
-
-
-@pytest.fixture
-def speech_frames():
-    pcm = generate_speech_like_signal(duration_ms=500)
-    return split_into_frames(pcm)
-
-
-@pytest.fixture
-def noise_frames():
-    return [generate_white_noise() for _ in range(10)]
-
-
-@pytest.fixture
-def mixed_silence_and_speech():
-    silence = [generate_silence() for _ in range(5)]
-    speech = split_into_frames(generate_speech_like_signal(duration_ms=300))
-    trailing_silence = [generate_silence() for _ in range(5)]
-    return silence + speech + trailing_silence
 
 
 @pytest.fixture
