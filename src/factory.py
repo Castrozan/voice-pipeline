@@ -17,24 +17,39 @@ logger = logging.getLogger(__name__)
 
 
 def _resolve_capture_device(config: VoicePipelineConfig) -> str | None:
-    if config.capture_device:
-        return config.capture_device
     try:
         from audio_env import discover
 
         environment = discover()
-        if environment:
-            for source in environment.sources:
-                if source.is_default:
-                    logger.info(
-                        "Auto-detected PipeWire source: %s (node %d)",
-                        source.name,
-                        source.node_id,
-                    )
-                    return source.name
     except Exception:
-        logger.debug("PipeWire source auto-detection failed, using system default")
-    return None
+        logger.debug(
+            "PipeWire discovery failed, using configured device or system default"
+        )
+        return config.capture_device or None
+
+    if config.capture_device and environment:
+        configured_device_exists_in_pipewire = any(
+            config.capture_device.lower() in source.name.lower()
+            for source in environment.sources
+        )
+        if configured_device_exists_in_pipewire:
+            return config.capture_device
+        logger.warning(
+            "Configured device '%s' not found in PipeWire, auto-detecting",
+            config.capture_device,
+        )
+
+    if environment:
+        for source in environment.sources:
+            if source.is_default:
+                logger.info(
+                    "Auto-detected PipeWire source: %s (node %d)",
+                    source.name,
+                    source.node_id,
+                )
+                return source.name
+
+    return config.capture_device or None
 
 
 def create_capture(config: VoicePipelineConfig) -> SounddeviceCapture:
