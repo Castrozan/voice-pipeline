@@ -103,7 +103,9 @@ def create_pipeline(
     speech_detector = create_speech_detector(config, vad)
     control = UnixSocketControlServer(socket_path=config.socket_path)
 
-    wake_detector = WakeWordDetector(config.wake_words)
+    wake_detector = WakeWordDetector(
+        config.wake_words, phonetic_alternatives=config.wake_word_alternatives
+    )
     conversation = ConversationHistory(max_turns=config.max_history_turns)
 
     pipeline = VoicePipeline(

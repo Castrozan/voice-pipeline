@@ -23,6 +23,7 @@ class VoicePipelineConfig(BaseSettings):
     vad_model_path: str = ""
 
     wake_words: list[str] = ["jarvis"]
+    wake_word_alternatives: dict[str, list[str]] = {}
 
     conversation_window_seconds: float = 15.0
     max_history_turns: int = 20

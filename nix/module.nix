@@ -22,6 +22,8 @@ let
   );
 
   wakeWordsJson = builtins.toJSON cfg.wakeWords;
+
+  wakeWordAlternativesJson = builtins.toJSON cfg.wakeWordAlternatives;
 in
 {
   options.services.voice-pipeline = {
@@ -55,6 +57,12 @@ in
     wakeWords = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [ "jarvis" ];
+    };
+
+    wakeWordAlternatives = lib.mkOption {
+      type = lib.types.attrsOf (lib.types.listOf lib.types.str);
+      default = { };
+      description = "Phonetic alternatives for wake words. Maps canonical name to list of STT mistranscriptions.";
     };
 
     ttsEngine = lib.mkOption {
@@ -142,6 +150,7 @@ in
       VOICE_PIPELINE_TTS_ENGINE=${cfg.ttsEngine}
       VOICE_PIPELINE_TTS_VOICE=${cfg.ttsVoice}
       VOICE_PIPELINE_WAKE_WORDS='${wakeWordsJson}'
+      VOICE_PIPELINE_WAKE_WORD_ALTERNATIVES='${wakeWordAlternativesJson}'
       VOICE_PIPELINE_CONVERSATION_WINDOW_SECONDS=${toString cfg.conversationWindowSeconds}
       VOICE_PIPELINE_MAX_HISTORY_TURNS=${toString cfg.maxHistoryTurns}
       VOICE_PIPELINE_CAPTURE_DEVICE=${cfg.captureDevice}

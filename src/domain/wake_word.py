@@ -1,16 +1,15 @@
 import re
 
-PHONETIC_ALTERNATIVES: dict[str, list[str]] = {
-    "jarvis": ["jarvus", "jarves", "jervis", "gervis", "jarvas"],
-    "robson": ["rabson", "robsen", "robeson", "robs", "robsun", "rabs"],
-    "jenny": ["jeni", "jeny", "jenni"],
-}
-
 
 class WakeWordDetector:
-    def __init__(self, wake_words: list[str]) -> None:
+    def __init__(
+        self,
+        wake_words: list[str],
+        phonetic_alternatives: dict[str, list[str]] | None = None,
+    ) -> None:
         self._wake_words = [w.lower() for w in wake_words]
         self._alternative_to_canonical: dict[str, str] = {}
+        alternatives = phonetic_alternatives or {}
         all_patterns: list[str] = []
 
         for word in self._wake_words:
@@ -18,7 +17,7 @@ class WakeWordDetector:
             all_patterns.append(escaped_word)
             self._alternative_to_canonical[word] = word
 
-            for alt in PHONETIC_ALTERNATIVES.get(word, []):
+            for alt in alternatives.get(word, []):
                 escaped_alt = re.escape(alt.lower())
                 all_patterns.append(escaped_alt)
                 self._alternative_to_canonical[alt.lower()] = word
