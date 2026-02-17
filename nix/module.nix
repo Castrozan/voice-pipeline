@@ -150,7 +150,7 @@ in
       VOICE_PIPELINE_AGENT_VOICES='${agentVoicesJson}'
       VOICE_PIPELINE_AGENT_LANGUAGES='${agentLanguagesJson}'
       VOICE_PIPELINE_MODEL=${cfg.model}
-      VOICE_PIPELINE_SYSTEM_PROMPT=${cfg.systemPrompt}
+      VOICE_PIPELINE_SYSTEM_PROMPT="${cfg.systemPrompt}"
     '';
 
     systemd.user.services.voice-pipeline = {
