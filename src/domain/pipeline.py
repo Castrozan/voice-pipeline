@@ -324,7 +324,10 @@ class VoicePipeline:
 
         try:
             if self._use_gateway_session:
-                api_messages = [{"role": "user", "content": full_text}]
+                api_messages = [
+                    {"role": "system", "content": self._get_system_prompt()},
+                    {"role": "user", "content": full_text},
+                ]
             else:
                 api_messages = self._conversation.to_api_messages(
                     system_prefix=self._get_system_prompt()
