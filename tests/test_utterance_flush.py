@@ -768,7 +768,7 @@ class TestBargeInWithRealVad:
         )
 
         barge_in_window_size = int(200 / FRAME_DURATION_MS)
-        barge_in_speech_ratio_threshold = 0.7
+        barge_in_speech_ratio_threshold = 0.5
         window: collections.deque[bool] = collections.deque(maxlen=barge_in_window_size)
         window_triggered = False
 

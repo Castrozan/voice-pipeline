@@ -36,8 +36,10 @@ class VoicePipeline:
         agent_language_map: dict[str, str] | None = None,
         pre_buffer_ms: int = 300,
         barge_in_min_speech_ms: int = 200,
+        barge_in_speech_ratio: float = 0.5,
         frame_duration_ms: int = 16,
         system_prompt: str = "",
+        use_gateway_session: bool = False,
     ) -> None:
         self._capture = capture
         self._playback = playback
@@ -56,7 +58,8 @@ class VoicePipeline:
         self._agent_language_map = agent_language_map or {}
         self._pre_buffer_frames = int(pre_buffer_ms / frame_duration_ms)
         self._barge_in_window_size = int(barge_in_min_speech_ms / frame_duration_ms)
-        self._barge_in_speech_ratio_threshold = 0.7
+        self._barge_in_speech_ratio_threshold = barge_in_speech_ratio
+        self._use_gateway_session = use_gateway_session
 
         self._state = PipelineState.AMBIENT
         self._enabled = True
@@ -320,9 +323,12 @@ class VoicePipeline:
         self._conversation.add_user_message(full_text)
 
         try:
-            api_messages = self._conversation.to_api_messages(
-                system_prefix=self._get_system_prompt()
-            )
+            if self._use_gateway_session:
+                api_messages = [{"role": "user", "content": full_text}]
+            else:
+                api_messages = self._conversation.to_api_messages(
+                    system_prefix=self._get_system_prompt()
+                )
             response_chunks: list[str] = []
 
             self._transition_to(PipelineState.SPEAKING)

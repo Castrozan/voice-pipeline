@@ -64,6 +64,7 @@ def create_completion(config: VoicePipelineConfig) -> CompletionPort:
         gateway_url=config.gateway_url,
         token=gateway_token,
         model=config.model,
+        session_key=config.gateway_session_key,
     )
 
 
@@ -123,8 +124,10 @@ def create_pipeline(
         agent_voice_map=config.agent_voices,
         agent_language_map=config.agent_languages,
         barge_in_min_speech_ms=config.barge_in_min_speech_ms,
+        barge_in_speech_ratio=config.barge_in_speech_ratio,
         frame_duration_ms=config.frame_duration_ms,
         system_prompt=config.system_prompt,
+        use_gateway_session=bool(config.gateway_session_key),
     )
 
     return pipeline, control

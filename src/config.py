@@ -33,6 +33,9 @@ class VoicePipelineConfig(BaseSettings):
 
     barge_in_enabled: bool = True
     barge_in_min_speech_ms: int = 200
+    barge_in_speech_ratio: float = 0.5
+
+    gateway_session_key: str = "agent:{agent}:main"
 
     socket_path: str = "/tmp/voice-pipeline.sock"
     log_file: str = "/tmp/voice-pipeline.log"
