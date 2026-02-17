@@ -33,6 +33,7 @@ class VoicePipeline:
         conversation_window_seconds: float = 15.0,
         barge_in_enabled: bool = True,
         agent_voice_map: dict[str, str] | None = None,
+        agent_language_map: dict[str, str] | None = None,
         pre_buffer_ms: int = 300,
         barge_in_min_speech_ms: int = 200,
         frame_duration_ms: int = 16,
@@ -52,6 +53,7 @@ class VoicePipeline:
         self._conversation_window_seconds = conversation_window_seconds
         self._barge_in_enabled = barge_in_enabled
         self._agent_voice_map = agent_voice_map or {}
+        self._agent_language_map = agent_language_map or {}
         self._pre_buffer_frames = int(pre_buffer_ms / frame_duration_ms)
         self._barge_in_window_size = int(barge_in_min_speech_ms / frame_duration_ms)
         self._barge_in_speech_ratio_threshold = 0.7
@@ -107,6 +109,12 @@ class VoicePipeline:
 
     def _get_voice(self) -> str:
         return self._agent_voice_map.get(self._agent, "onyx")
+
+    def _get_system_prompt(self) -> str:
+        agent_language = self._agent_language_map.get(self._agent, "")
+        if agent_language:
+            return f"{self._system_prompt} Always respond in {agent_language}."
+        return self._system_prompt
 
     async def run(self) -> None:
         self._running = True
@@ -313,7 +321,7 @@ class VoicePipeline:
 
         try:
             api_messages = self._conversation.to_api_messages(
-                system_prefix=self._system_prompt
+                system_prefix=self._get_system_prompt()
             )
             response_chunks: list[str] = []
 

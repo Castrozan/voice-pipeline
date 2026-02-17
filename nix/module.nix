@@ -17,6 +17,10 @@ let
     ) cfg.agents
   );
 
+  agentLanguagesJson = builtins.toJSON (
+    lib.filterAttrs (_: v: v != "") (lib.mapAttrs (_name: agentCfg: agentCfg.language) cfg.agents)
+  );
+
   wakeWordsJson = builtins.toJSON cfg.wakeWords;
 in
 {
@@ -117,6 +121,11 @@ in
             default = "";
             description = "Edge-TTS voice name (e.g. pt-BR-AntonioNeural). When set and ttsEngine=edge-tts, overrides openaiVoice.";
           };
+          options.language = lib.mkOption {
+            type = lib.types.str;
+            default = "";
+            description = "Language the agent should respond in (e.g. Portuguese, English). Appended to system prompt.";
+          };
         }
       );
       default = { };
@@ -139,6 +148,7 @@ in
       VOICE_PIPELINE_BARGE_IN_ENABLED=${if cfg.bargeInEnabled then "true" else "false"}
       VOICE_PIPELINE_STT_ENGINE=${cfg.sttEngine}
       VOICE_PIPELINE_AGENT_VOICES='${agentVoicesJson}'
+      VOICE_PIPELINE_AGENT_LANGUAGES='${agentLanguagesJson}'
       VOICE_PIPELINE_MODEL=${cfg.model}
       VOICE_PIPELINE_SYSTEM_PROMPT=${cfg.systemPrompt}
     '';
@@ -153,6 +163,10 @@ in
         EnvironmentFile = "%h/.config/voice-pipeline/env";
         ExecStart = "${pkgs.lib.getExe (
           pkgs.writeShellScriptBin "voice-pipeline-start" ''
+            OPENCLAW_TOKEN=$(openclaw config get gateway.auth.token 2>/dev/null || true)
+            if [ -n "$OPENCLAW_TOKEN" ]; then
+              export VOICE_PIPELINE_GATEWAY_TOKEN="$OPENCLAW_TOKEN"
+            fi
             exec voice-pipeline
           ''
         )}";

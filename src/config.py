@@ -6,6 +6,7 @@ class VoicePipelineConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="VOICE_PIPELINE_")
 
     gateway_url: str = "http://localhost:18789"
+    gateway_token: str = ""
     gateway_token_file: str = "/run/agenix/openclaw-gateway-token"
     default_agent: str = "jarvis"
 
@@ -38,6 +39,7 @@ class VoicePipelineConfig(BaseSettings):
     log_file: str = "/tmp/voice-pipeline.log"
 
     agent_voices: dict[str, str] = {}
+    agent_languages: dict[str, str] = {}
 
     completion_engine: Literal["openclaw", "anthropic", "cli"] = "openclaw"
     completion_cli_command: str = "claude -p"

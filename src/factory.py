@@ -57,7 +57,9 @@ def create_completion(config: VoicePipelineConfig) -> CompletionPort:
 
     from adapters.openclaw_llm import OpenClawCompletion
 
-    gateway_token = config.read_secret(config.gateway_token_file)
+    gateway_token = config.gateway_token or config.read_secret(
+        config.gateway_token_file
+    )
     return OpenClawCompletion(
         gateway_url=config.gateway_url,
         token=gateway_token,
@@ -117,6 +119,7 @@ def create_pipeline(
         conversation_window_seconds=config.conversation_window_seconds,
         barge_in_enabled=config.barge_in_enabled,
         agent_voice_map=config.agent_voices,
+        agent_language_map=config.agent_languages,
         barge_in_min_speech_ms=config.barge_in_min_speech_ms,
         frame_duration_ms=config.frame_duration_ms,
         system_prompt=config.system_prompt,
