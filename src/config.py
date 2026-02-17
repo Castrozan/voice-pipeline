@@ -26,7 +26,7 @@ class VoicePipelineConfig(BaseSettings):
     conversation_window_seconds: float = 15.0
     max_history_turns: int = 20
 
-    capture_device: str = "echo-cancel-source"
+    capture_device: str = ""
     capture_gain: float = 2.0
     sample_rate: int = 16000
     frame_duration_ms: int = 16

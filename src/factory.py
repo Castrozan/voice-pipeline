@@ -16,9 +16,30 @@ from ports.transcriber import TranscriberPort
 logger = logging.getLogger(__name__)
 
 
+def _resolve_capture_device(config: VoicePipelineConfig) -> str | None:
+    if config.capture_device:
+        return config.capture_device
+    try:
+        from audio_env import discover
+
+        environment = discover()
+        if environment:
+            for source in environment.sources:
+                if source.is_default:
+                    logger.info(
+                        "Auto-detected PipeWire source: %s (node %d)",
+                        source.name,
+                        source.node_id,
+                    )
+                    return source.name
+    except Exception:
+        logger.debug("PipeWire source auto-detection failed, using system default")
+    return None
+
+
 def create_capture(config: VoicePipelineConfig) -> SounddeviceCapture:
     return SounddeviceCapture(
-        device=config.capture_device,
+        device=_resolve_capture_device(config),
         sample_rate=config.sample_rate,
         frame_duration_ms=config.frame_duration_ms,
         gain=config.capture_gain,

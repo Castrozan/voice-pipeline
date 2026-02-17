@@ -49,6 +49,7 @@ class SounddeviceCapture:
         device = self._resolve_device()
         if hasattr(self, "_pipewire_node_fallback"):
             import os
+
             os.environ["PIPEWIRE_NODE"] = self._pipewire_node_fallback
         self._stream = sd.InputStream(
             device=device,
@@ -61,11 +62,14 @@ class SounddeviceCapture:
         self._stream.start()
         if hasattr(self, "_pipewire_node_fallback"):
             import os
+
             os.environ.pop("PIPEWIRE_NODE", None)
             del self._pipewire_node_fallback
         logger.info(
             "Audio capture started (device=%s, rate=%d, frame=%dms)",
-            device, self._sample_rate, self._frame_duration_ms,
+            device,
+            self._sample_rate,
+            self._frame_duration_ms,
         )
 
     async def stop(self) -> None:
@@ -82,9 +86,7 @@ class SounddeviceCapture:
             return
         while True:
             try:
-                frame = await asyncio.wait_for(
-                    self._queue.async_q.get(), timeout=1.0
-                )
+                frame = await asyncio.wait_for(self._queue.async_q.get(), timeout=1.0)
                 yield frame
             except asyncio.TimeoutError:
                 continue
@@ -92,7 +94,7 @@ class SounddeviceCapture:
                 break
 
     def _resolve_device(self) -> str | int | None:
-        if self._device is None:
+        if self._device is None or self._device == "":
             return None
         if isinstance(self._device, int):
             return self._device
@@ -101,11 +103,19 @@ class SounddeviceCapture:
         except ValueError:
             pass
         for i, dev in enumerate(sd.query_devices()):
-            if self._device.lower() in dev["name"].lower() and dev["max_input_channels"] > 0:
-                logger.info("Resolved device '%s' -> %d (%s)", self._device, i, dev["name"])
+            if (
+                self._device.lower() in dev["name"].lower()
+                and dev["max_input_channels"] > 0
+            ):
+                logger.info(
+                    "Resolved device '%s' -> %d (%s)", self._device, i, dev["name"]
+                )
                 return i
         self._pipewire_node_fallback = self._device
-        logger.info("Device '%s' not in PortAudio, will use PIPEWIRE_NODE for routing", self._device)
+        logger.info(
+            "Device '%s' not in PortAudio, will use PIPEWIRE_NODE for routing",
+            self._device,
+        )
         return None
 
 
@@ -190,7 +200,9 @@ class SounddevicePlayback:
                 for block_offset in range(0, len(audio_array), PLAYBACK_BLOCK_SIZE):
                     if self._cancelled:
                         break
-                    block = audio_array[block_offset : block_offset + PLAYBACK_BLOCK_SIZE]
+                    block = audio_array[
+                        block_offset : block_offset + PLAYBACK_BLOCK_SIZE
+                    ]
                     try:
                         await loop.run_in_executor(
                             None, self._stream.write, block.reshape(-1, 1)
