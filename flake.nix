@@ -34,7 +34,7 @@
           ];
         in
         writeShellScriptBin "voice-pipeline" ''
-          export LD_LIBRARY_PATH="${lib.makeLibraryPath nativeLibs}:''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          export LD_LIBRARY_PATH="${lib.makeLibraryPath nativeLibs}''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
           ENV_FILE="''${HOME}/.config/voice-pipeline/env"
           if [ -f "$ENV_FILE" ]; then
