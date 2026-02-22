@@ -27,7 +27,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
-py-modules = ["__init__", "cli", "config", "factory"]
+py-modules = ["__init__", "__main__", "audio_env", "cli", "config", "factory", "health", "log_format"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
