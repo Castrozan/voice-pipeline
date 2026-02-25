@@ -19,6 +19,7 @@
         {
           writeShellScriptBin,
           python312,
+          uv,
           portaudio,
           alsa-lib,
           lib,
@@ -44,22 +45,22 @@
           fi
 
           VENV="${prefix}"
-          SRC="${self}"
+          CURRENT_SOURCE="${self}"
 
           if [ ! -d "$VENV" ]; then
             echo "[voice-pipeline] Creating virtualenv..." >&2
-            ${python}/bin/python -m venv "$VENV" >&2
+            ${uv}/bin/uv venv --python "${python}/bin/python" "$VENV" >&2
           fi
 
-          if [ ! -f "$VENV/.installed" ] || [ "$VENV/.installed" -ot "$SRC/pyproject.toml" ]; then
-            echo "[voice-pipeline] Installing dependencies..." >&2
-            TMPBUILD=$(mktemp -d)
-            cp -r "$SRC"/. "$TMPBUILD/"
-            chmod -R u+w "$TMPBUILD"
-            "$VENV/bin/pip" install --quiet --upgrade pip >&2
-            "$VENV/bin/pip" install --quiet "$TMPBUILD" >&2
-            rm -rf "$TMPBUILD"
-            touch "$VENV/.installed"
+          INSTALLED_SOURCE=""
+          if [ -f "$VENV/.installed-source" ]; then
+            INSTALLED_SOURCE=$(cat "$VENV/.installed-source")
+          fi
+
+          if [ "$INSTALLED_SOURCE" != "$CURRENT_SOURCE" ]; then
+            echo "[voice-pipeline] Installing dependencies (uv)..." >&2
+            ${uv}/bin/uv pip install --python "$VENV/bin/python" "$CURRENT_SOURCE" >&2
+            echo "$CURRENT_SOURCE" > "$VENV/.installed-source"
           fi
 
           exec "$VENV/bin/voice-pipeline" "$@"
