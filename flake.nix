@@ -59,7 +59,11 @@
 
           if [ "$INSTALLED_SOURCE" != "$CURRENT_SOURCE" ]; then
             echo "[voice-pipeline] Installing dependencies (uv)..." >&2
-            ${uv}/bin/uv pip install --python "$VENV/bin/python" "$CURRENT_SOURCE" >&2
+            TMPBUILD=$(mktemp -d)
+            cp -r "$CURRENT_SOURCE"/. "$TMPBUILD/"
+            chmod -R u+w "$TMPBUILD"
+            ${uv}/bin/uv pip install --python "$VENV/bin/python" "$TMPBUILD" >&2
+            rm -rf "$TMPBUILD"
             echo "$CURRENT_SOURCE" > "$VENV/.installed-source"
           fi
 
