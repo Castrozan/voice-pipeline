@@ -174,6 +174,7 @@ class FakeSynthesizer:
     async def cancel(self) -> None:
         self._cancelled = True
 
+
 RECORDINGS_DIR = Path(__file__).parent / "recordings" / "headset"
 BYTES_PER_FRAME = FRAME_SIZE * 2
 
@@ -243,7 +244,9 @@ class TestRealVadWithRecordings:
             pytest.skip("No speech recordings found in tests/recordings/headset/")
 
         frames = load_recording_as_frames(recording_path)
-        pipeline, transcriber, capture = self._make_pipeline_with_real_vad(real_vad, frames)
+        pipeline, transcriber, capture = self._make_pipeline_with_real_vad(
+            real_vad, frames
+        )
 
         pipeline._running = True
         pipeline._enabled = True
@@ -260,7 +263,9 @@ class TestRealVadWithRecordings:
             pytest.skip("No silence recording found")
 
         frames = load_recording_as_frames(silence_path)
-        pipeline, transcriber, capture = self._make_pipeline_with_real_vad(real_vad, frames)
+        pipeline, transcriber, capture = self._make_pipeline_with_real_vad(
+            real_vad, frames
+        )
 
         pipeline._running = True
         pipeline._enabled = True
@@ -279,7 +284,9 @@ class TestRealVadWithRecordings:
         frames = load_recording_as_frames(recording_path)
         transcriber = FakeTranscriber()
         pipeline, _, capture = self._make_pipeline_with_real_vad(
-            real_vad, frames, transcriber=transcriber,
+            real_vad,
+            frames,
+            transcriber=transcriber,
         )
 
         pipeline._running = True
@@ -300,7 +307,9 @@ class TestRealVadWithRecordings:
         pre_buffer_ms = 300
         pre_buffer_frame_count = int(pre_buffer_ms / FRAME_DURATION_MS)
 
-        pipeline, transcriber, capture = self._make_pipeline_with_real_vad(real_vad, frames)
+        pipeline, transcriber, capture = self._make_pipeline_with_real_vad(
+            real_vad, frames
+        )
 
         pipeline._running = True
         pipeline._enabled = True
@@ -317,7 +326,9 @@ class TestFullPipelineFlow:
         self,
         vad_probabilities: list[float],
         transcript_events: list[TranscriptEvent],
-    ) -> tuple[VoicePipeline, FakeVad, FakeTranscriber, FakeCompletion, FakeSynthesizer]:
+    ) -> tuple[
+        VoicePipeline, FakeVad, FakeTranscriber, FakeCompletion, FakeSynthesizer
+    ]:
         vad = FakeVad(vad_probabilities)
         transcriber = FakeTranscriber()
         transcriber.queue_events(transcript_events)
@@ -331,7 +342,10 @@ class TestFullPipelineFlow:
             frame_duration_ms=FRAME_DURATION_MS,
         )
 
-        capture_frames = [generate_silence(duration_ms=FRAME_DURATION_MS) for _ in range(len(vad_probabilities))]
+        capture_frames = [
+            generate_silence(duration_ms=FRAME_DURATION_MS)
+            for _ in range(len(vad_probabilities))
+        ]
 
         pipeline = VoicePipeline(
             capture=FakeAudioCapture(capture_frames),
@@ -351,7 +365,8 @@ class TestFullPipelineFlow:
         vad_probs = [0.0] * 10
 
         pipeline, vad, transcriber, completion, synthesizer = self._build_pipeline(
-            vad_probs, [],
+            vad_probs,
+            [],
         )
 
         observed_states: list[PipelineState] = []
@@ -393,7 +408,8 @@ class TestFullPipelineFlow:
         vad_probs = [0.9] * 10 + [0.0] * 25
 
         pipeline, vad, transcriber, completion, synthesizer = self._build_pipeline(
-            vad_probs, [],
+            vad_probs,
+            [],
         )
 
         pipeline._running = True
@@ -418,7 +434,8 @@ class TestFullPipelineFlow:
         vad_probs = [0.9] * 10
 
         pipeline, vad, transcriber, completion, synthesizer = self._build_pipeline(
-            vad_probs, [],
+            vad_probs,
+            [],
         )
 
         pipeline._running = True
@@ -436,14 +453,18 @@ class TestFullPipelineFlow:
         assistant_messages = [m for m in messages if m["role"] == "assistant"]
 
         assert len(user_messages) >= 1, "Expected user message in conversation history"
-        assert len(assistant_messages) >= 1, "Expected assistant message in conversation history"
+        assert len(assistant_messages) >= 1, (
+            "Expected assistant message in conversation history"
+        )
 
 
 class TestBargeInMinimumSpeechDuration:
     def _build_speaking_pipeline(
         self,
         barge_in_min_speech_ms: int = 200,
-    ) -> tuple[VoicePipeline, FakeVad, FakeCompletion, FakeSynthesizer, FakeAudioPlayback]:
+    ) -> tuple[
+        VoicePipeline, FakeVad, FakeCompletion, FakeSynthesizer, FakeAudioPlayback
+    ]:
         vad = FakeVad()
         transcriber = FakeTranscriber()
         completion = FakeCompletion()
@@ -488,13 +509,14 @@ class TestBargeInMinimumSpeechDuration:
         window = pipeline._barge_in_window
         if len(window) >= pipeline._barge_in_window_size:
             return (
-                sum(window) / len(window)
-                >= pipeline._barge_in_speech_ratio_threshold
+                sum(window) / len(window) >= pipeline._barge_in_speech_ratio_threshold
             )
         return False
 
     async def test_single_speech_frame_does_not_barge_in(self):
-        pipeline, vad, completion, synthesizer, playback = self._build_speaking_pipeline()
+        pipeline, vad, completion, synthesizer, playback = (
+            self._build_speaking_pipeline()
+        )
         pipeline._state = PipelineState.SPEAKING
         pipeline._running = True
         pipeline._enabled = True
@@ -507,26 +529,32 @@ class TestBargeInMinimumSpeechDuration:
         assert pipeline._state == PipelineState.SPEAKING
 
     async def test_few_speech_frames_does_not_barge_in(self):
-        pipeline, vad, completion, synthesizer, playback = self._build_speaking_pipeline()
+        pipeline, vad, completion, synthesizer, playback = (
+            self._build_speaking_pipeline()
+        )
         pipeline._state = PipelineState.SPEAKING
         pipeline._running = True
         pipeline._enabled = True
 
         window_size = pipeline._barge_in_window_size
-        too_few_speech = int(window_size * 0.5)
+        too_few_speech = int(window_size * 0.3)
         too_many_silence = window_size - too_few_speech
         vad.set_probabilities([0.9] * too_few_speech + [0.0] * too_many_silence)
 
         frame = generate_silence(duration_ms=FRAME_DURATION_MS)
         triggered = self._simulate_barge_in_frames(
-            pipeline, frame, too_few_speech + too_many_silence,
+            pipeline,
+            frame,
+            too_few_speech + too_many_silence,
         )
 
         assert not triggered
         assert pipeline._state == PipelineState.SPEAKING
 
     async def test_sustained_speech_triggers_barge_in(self):
-        pipeline, vad, completion, synthesizer, playback = self._build_speaking_pipeline()
+        pipeline, vad, completion, synthesizer, playback = (
+            self._build_speaking_pipeline()
+        )
         pipeline._state = PipelineState.SPEAKING
         pipeline._running = True
         pipeline._enabled = True
@@ -538,9 +566,7 @@ class TestBargeInMinimumSpeechDuration:
         frame = generate_silence(duration_ms=FRAME_DURATION_MS)
         triggered = self._simulate_barge_in_frames(pipeline, frame, enough_frames)
 
-        assert triggered, (
-            f"Expected barge-in after {enough_frames} speech frames"
-        )
+        assert triggered, f"Expected barge-in after {enough_frames} speech frames"
 
     async def test_barge_in_window_size_matches_config(self):
         for min_speech_ms in [100, 200, 400]:
@@ -554,13 +580,15 @@ class TestBargeInMinimumSpeechDuration:
             )
 
     async def test_intermittent_silence_below_threshold_does_not_barge_in(self):
-        pipeline, vad, completion, synthesizer, playback = self._build_speaking_pipeline()
+        pipeline, vad, completion, synthesizer, playback = (
+            self._build_speaking_pipeline()
+        )
         pipeline._state = PipelineState.SPEAKING
         pipeline._running = True
         pipeline._enabled = True
 
         window_size = pipeline._barge_in_window_size
-        pattern = [0.9, 0.0] * (window_size // 2) + [0.0] * 3
+        pattern = [0.9, 0.0, 0.0] * (window_size // 3 + 1)
         vad.set_probabilities(pattern)
 
         frame = generate_silence(duration_ms=FRAME_DURATION_MS)
@@ -570,7 +598,9 @@ class TestBargeInMinimumSpeechDuration:
         assert pipeline._state == PipelineState.SPEAKING
 
     async def test_sliding_window_tolerates_brief_silence_gaps(self):
-        pipeline, vad, completion, synthesizer, playback = self._build_speaking_pipeline()
+        pipeline, vad, completion, synthesizer, playback = (
+            self._build_speaking_pipeline()
+        )
         pipeline._state = PipelineState.SPEAKING
         pipeline._running = True
         pipeline._enabled = True

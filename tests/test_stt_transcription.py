@@ -9,7 +9,6 @@ from cli import _load_env_file
 
 _load_env_file()
 
-import numpy as np
 import pytest
 
 from adapters.silero_vad import SileroVad, DEFAULT_MODEL_PATH
@@ -39,8 +38,12 @@ def _resolve_openai_api_key() -> str:
 
 def _load_wav_pcm(path: Path) -> bytes:
     with wave.open(str(path), "rb") as wf:
-        assert wf.getframerate() == SAMPLE_RATE, f"Expected {SAMPLE_RATE}Hz, got {wf.getframerate()}Hz"
-        assert wf.getnchannels() == 1, f"Expected mono, got {wf.getnchannels()} channels"
+        assert wf.getframerate() == SAMPLE_RATE, (
+            f"Expected {SAMPLE_RATE}Hz, got {wf.getframerate()}Hz"
+        )
+        assert wf.getnchannels() == 1, (
+            f"Expected mono, got {wf.getnchannels()} channels"
+        )
         return wf.readframes(wf.getnframes())
 
 
@@ -234,7 +237,9 @@ class TestPrebufferComparison:
         api_key = _resolve_openai_api_key()
         wav_path = RECORDINGS_DIR / "headset" / "wake_jarvis_weather.wav"
 
-        transcript_without = transcribe_recording(wav_path, api_key, use_prebuffer=False)
+        transcript_without = transcribe_recording(
+            wav_path, api_key, use_prebuffer=False
+        )
         transcript_with = transcribe_recording(wav_path, api_key, use_prebuffer=True)
 
         print(f"WITHOUT prebuffer: '{transcript_without}'")

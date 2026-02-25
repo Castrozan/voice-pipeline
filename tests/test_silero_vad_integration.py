@@ -1,4 +1,3 @@
-import io
 import urllib.request
 import wave
 from pathlib import Path
@@ -119,5 +118,9 @@ class TestSpeechDetectorWithRealVad:
         speech_starts = [e for e in events if e == SpeechEvent.SPEECH_START]
         speech_continues = [e for e in events if e == SpeechEvent.SPEECH_CONTINUE]
 
-        assert len(speech_starts) > 0, "SpeechDetector never detected SPEECH_START in real audio"
-        assert len(speech_continues) > 0, "SpeechDetector never detected SPEECH_CONTINUE in real audio"
+        assert len(speech_starts) > 0, (
+            "SpeechDetector never detected SPEECH_START in real audio"
+        )
+        assert len(speech_continues) > 0, (
+            "SpeechDetector never detected SPEECH_CONTINUE in real audio"
+        )

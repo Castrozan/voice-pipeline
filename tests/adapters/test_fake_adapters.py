@@ -2,13 +2,9 @@ import pytest
 
 from tests.conftest import (
     FakeAudioCapture,
-    FakeAudioPlayback,
     FakeVad,
-    FakeTranscriber,
     FakeCompletion,
-    FakeSynthesizer,
     generate_silence,
-    generate_sine_wave,
 )
 from ports.transcriber import TranscriptEvent
 
@@ -108,10 +104,12 @@ class TestFakeTranscriber:
 
     @pytest.mark.asyncio
     async def test_get_transcripts(self, fake_transcriber):
-        fake_transcriber.queue_events([
-            TranscriptEvent(text="hello jarvis", is_final=False),
-            TranscriptEvent(text="hello jarvis what time is it", is_final=True),
-        ])
+        fake_transcriber.queue_events(
+            [
+                TranscriptEvent(text="hello jarvis", is_final=False),
+                TranscriptEvent(text="hello jarvis what time is it", is_final=True),
+            ]
+        )
         results = []
         async for event in fake_transcriber.get_transcripts():
             results.append(event)
@@ -129,9 +127,11 @@ class TestFakeCompletion:
 
     @pytest.mark.asyncio
     async def test_stream_custom_agent(self):
-        completion = FakeCompletion(responses={
-            "robson": ["Oi", " tudo bem?"],
-        })
+        completion = FakeCompletion(
+            responses={
+                "robson": ["Oi", " tudo bem?"],
+            }
+        )
         chunks = []
         async for chunk in completion.stream([], "robson"):
             chunks.append(chunk)

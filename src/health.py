@@ -46,22 +46,51 @@ def has_critical_failures(results: list[HealthCheckResult]) -> bool:
 def _check_audio_device(config: VoicePipelineConfig) -> HealthCheckResult:
     name = "audio_device"
     try:
-        devices = sd.query_devices()
         device_name = config.capture_device
+        if not device_name:
+            try:
+                default = sd.query_devices(kind="input")
+                return HealthCheckResult(
+                    name=name,
+                    passed=True,
+                    detail=f"Auto-detect mode, default input: {default['name']}",
+                )
+            except sd.PortAudioError:
+                return HealthCheckResult(
+                    name=name,
+                    passed=False,
+                    detail="No input devices available",
+                )
 
+        devices = sd.query_devices()
         for dev in devices:
-            if device_name.lower() in dev["name"].lower() and dev["max_input_channels"] > 0:
-                return HealthCheckResult(name=name, passed=True, detail=f"Device '{device_name}' found")
+            if (
+                device_name.lower() in dev["name"].lower()
+                and dev["max_input_channels"] > 0
+            ):
+                return HealthCheckResult(
+                    name=name,
+                    passed=True,
+                    detail=f"Device '{device_name}' found",
+                )
 
         try:
             default = sd.query_devices(kind="input")
             return HealthCheckResult(
                 name=name,
                 passed=True,
-                detail=f"'{device_name}' not in PortAudio (will use PIPEWIRE_NODE), default input: {default['name']}",
+                detail=(
+                    f"'{device_name}' not in PortAudio"
+                    f" (will use PIPEWIRE_NODE),"
+                    f" default input: {default['name']}"
+                ),
             )
         except sd.PortAudioError:
-            return HealthCheckResult(name=name, passed=False, detail="No input devices available")
+            return HealthCheckResult(
+                name=name,
+                passed=False,
+                detail="No input devices available",
+            )
     except Exception as exc:
         return HealthCheckResult(name=name, passed=False, detail=str(exc))
 
@@ -73,7 +102,30 @@ def _check_pipewire_audio_environment(config: VoicePipelineConfig) -> HealthChec
 
         environment = discover()
         if environment is None:
-            return HealthCheckResult(name=name, passed=True, detail="wpctl not available, skipping PipeWire check")
+            return HealthCheckResult(
+                name=name,
+                passed=True,
+                detail="wpctl not available, skipping PipeWire check",
+            )
+
+        if not config.capture_device:
+            default_source = next(
+                (s for s in environment.sources if s.is_default), None
+            )
+            if default_source:
+                detail = (
+                    f"Default source: {default_source.name}"
+                    f" (node {default_source.node_id})"
+                )
+                if environment.echo_cancel:
+                    echo = environment.echo_cancel
+                    detail += f", echo-cancel: capture={echo.capture_physical_source}"
+                return HealthCheckResult(name=name, passed=True, detail=detail)
+            return HealthCheckResult(
+                name=name,
+                passed=False,
+                detail="No default PipeWire source found",
+            )
 
         capture_device_name = config.capture_device
         source_found = any(
@@ -93,7 +145,10 @@ def _check_pipewire_audio_environment(config: VoicePipelineConfig) -> HealthChec
             return HealthCheckResult(
                 name=name,
                 passed=True,
-                detail=f"capture={echo.capture_physical_source}, playback={echo.playback_physical_sink}",
+                detail=(
+                    f"capture={echo.capture_physical_source},"
+                    f" playback={echo.playback_physical_sink}"
+                ),
             )
 
         return HealthCheckResult(
@@ -109,16 +164,25 @@ def _check_vad_model(config: VoicePipelineConfig) -> HealthCheckResult:
     name = "vad_model"
     try:
         from adapters.silero_vad import SileroVad
-        vad = SileroVad(model_path=config.vad_model_path, sample_rate=config.sample_rate)
+
+        vad = SileroVad(
+            model_path=config.vad_model_path, sample_rate=config.sample_rate
+        )
 
         frame_samples = int(config.sample_rate * config.frame_duration_ms / 1000)
         silence = np.zeros(frame_samples, dtype=np.int16).tobytes()
         prob = vad.process_frame(silence)
 
         if prob > 0.3:
-            return HealthCheckResult(name=name, passed=False, detail=f"Silence gave prob={prob:.4f}, model may be broken")
+            return HealthCheckResult(
+                name=name,
+                passed=False,
+                detail=f"Silence gave prob={prob:.4f}, model may be broken",
+            )
 
-        return HealthCheckResult(name=name, passed=True, detail=f"Loaded, silence prob={prob:.4f}")
+        return HealthCheckResult(
+            name=name, passed=True, detail=f"Loaded, silence prob={prob:.4f}"
+        )
     except Exception as exc:
         return HealthCheckResult(name=name, passed=False, detail=str(exc))
 
@@ -131,6 +195,7 @@ def _check_vad_with_audio(config: VoicePipelineConfig) -> HealthCheckResult:
         frames_needed = int(0.5 * config.sample_rate / frame_samples)
 
         import threading
+
         done = threading.Event()
 
         def callback(indata, frames, time_info, status):
@@ -139,14 +204,21 @@ def _check_vad_with_audio(config: VoicePipelineConfig) -> HealthCheckResult:
                 done.set()
 
         device = None
-        for i, dev in enumerate(sd.query_devices()):
-            if config.capture_device.lower() in dev["name"].lower() and dev["max_input_channels"] > 0:
-                device = i
-                break
+        if config.capture_device:
+            for i, dev in enumerate(sd.query_devices()):
+                if (
+                    config.capture_device.lower() in dev["name"].lower()
+                    and dev["max_input_channels"] > 0
+                ):
+                    device = i
+                    break
 
         import os
-        if device is None:
+
+        pipewire_node_set = False
+        if device is None and config.capture_device:
             os.environ["PIPEWIRE_NODE"] = config.capture_device
+            pipewire_node_set = True
 
         try:
             stream = sd.InputStream(
@@ -162,11 +234,13 @@ def _check_vad_with_audio(config: VoicePipelineConfig) -> HealthCheckResult:
             stream.stop()
             stream.close()
         finally:
-            if device is None:
+            if pipewire_node_set:
                 os.environ.pop("PIPEWIRE_NODE", None)
 
         if not captured_frames:
-            return HealthCheckResult(name=name, passed=False, detail="No audio frames captured")
+            return HealthCheckResult(
+                name=name, passed=False, detail="No audio frames captured"
+            )
 
         all_audio = np.concatenate(captured_frames)
         pcm = (all_audio * config.capture_gain * 32767).astype(np.int16)
@@ -174,7 +248,11 @@ def _check_vad_with_audio(config: VoicePipelineConfig) -> HealthCheckResult:
         peak = int(np.max(np.abs(pcm)))
 
         if rms < 1.0:
-            return HealthCheckResult(name=name, passed=False, detail=f"Audio silent (rms={rms:.0f}, peak={peak}), mic may be muted")
+            return HealthCheckResult(
+                name=name,
+                passed=False,
+                detail=f"Audio silent (rms={rms:.0f}, peak={peak}), mic may be muted",
+            )
 
         return HealthCheckResult(
             name=name,
@@ -192,7 +270,9 @@ def _check_api_keys(config: VoicePipelineConfig) -> HealthCheckResult:
     if config.stt_engine == "deepgram":
         key = config.read_secret(config.deepgram_api_key_file)
         if not key:
-            missing.append(f"deepgram ({config.deepgram_api_key_file or 'not configured'})")
+            missing.append(
+                f"deepgram ({config.deepgram_api_key_file or 'not configured'})"
+            )
 
     openai_key = config.read_secret(config.openai_api_key_file)
     if not openai_key:
@@ -200,7 +280,10 @@ def _check_api_keys(config: VoicePipelineConfig) -> HealthCheckResult:
 
     if config.completion_engine == "anthropic":
         import os
-        anthropic_key = config.read_secret(config.anthropic_api_key_file) or os.environ.get("ANTHROPIC_API_KEY", "")
+
+        anthropic_key = config.read_secret(
+            config.anthropic_api_key_file
+        ) or os.environ.get("ANTHROPIC_API_KEY", "")
         if not anthropic_key:
             missing.append("anthropic (no key file and ANTHROPIC_API_KEY not set)")
     elif config.completion_engine == "cli":
@@ -213,32 +296,53 @@ def _check_api_keys(config: VoicePipelineConfig) -> HealthCheckResult:
             missing.append(f"gateway ({config.gateway_token_file or 'not configured'})")
 
     if missing:
-        return HealthCheckResult(name=name, passed=False, detail=f"Missing: {', '.join(missing)}")
+        return HealthCheckResult(
+            name=name, passed=False, detail=f"Missing: {', '.join(missing)}"
+        )
 
     return HealthCheckResult(name=name, passed=True, detail="All API keys loaded")
 
 
-def _check_completion_engine_reachable(config: VoicePipelineConfig) -> HealthCheckResult:
+def _check_completion_engine_reachable(
+    config: VoicePipelineConfig,
+) -> HealthCheckResult:
     name = "completion_engine"
 
     if config.completion_engine == "cli":
         cli_executable = config.completion_cli_command.split()[0]
         path = shutil.which(cli_executable)
         if path:
-            return HealthCheckResult(name=name, passed=True, detail=f"CLI command found: {path}")
-        return HealthCheckResult(name=name, passed=False, detail=f"CLI command '{cli_executable}' not found in PATH")
+            return HealthCheckResult(
+                name=name, passed=True, detail=f"CLI command found: {path}"
+            )
+        return HealthCheckResult(
+            name=name,
+            passed=False,
+            detail=f"CLI command '{cli_executable}' not found in PATH",
+        )
 
     if config.completion_engine != "openclaw":
-        return HealthCheckResult(name=name, passed=True, detail=f"Skipped (engine={config.completion_engine})")
+        return HealthCheckResult(
+            name=name,
+            passed=True,
+            detail=f"Skipped (engine={config.completion_engine})",
+        )
 
     try:
         import urllib.request
+
         req = urllib.request.Request(f"{config.gateway_url}/health", method="GET")
         req.add_header("User-Agent", "voice-pipeline/healthcheck")
         response = urllib.request.urlopen(req, timeout=3)
-        return HealthCheckResult(name=name, passed=True, detail=f"Gateway reachable ({response.status})")
+        return HealthCheckResult(
+            name=name, passed=True, detail=f"Gateway reachable ({response.status})"
+        )
     except urllib.error.URLError as exc:
         reason = str(exc.reason) if hasattr(exc, "reason") else str(exc)
-        return HealthCheckResult(name=name, passed=False, detail=f"Gateway unreachable: {reason}")
+        return HealthCheckResult(
+            name=name, passed=False, detail=f"Gateway unreachable: {reason}"
+        )
     except Exception as exc:
-        return HealthCheckResult(name=name, passed=False, detail=f"Gateway unreachable: {exc}")
+        return HealthCheckResult(
+            name=name, passed=False, detail=f"Gateway unreachable: {exc}"
+        )

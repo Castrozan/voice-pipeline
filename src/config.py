@@ -11,11 +11,9 @@ class VoicePipelineConfig(BaseSettings):
     default_agent: str = "jarvis"
 
     stt_engine: Literal["deepgram", "openai-whisper"] = "deepgram"
-    stt_mode: Literal["vad-gated", "always-streaming"] = "vad-gated"
     deepgram_api_key_file: str = ""
 
     tts_engine: Literal["openai", "edge-tts"] = "openai"
-    tts_voice: str = "onyx"
     openai_api_key_file: str = ""
 
     vad_threshold: float = 0.5
@@ -28,13 +26,16 @@ class VoicePipelineConfig(BaseSettings):
     conversation_window_seconds: float = 15.0
     max_history_turns: int = 20
 
-    capture_device: str = "echo-cancel-source"
+    capture_device: str = ""
     capture_gain: float = 2.0
     sample_rate: int = 16000
     frame_duration_ms: int = 16
 
     barge_in_enabled: bool = True
     barge_in_min_speech_ms: int = 200
+    barge_in_speech_ratio: float = 0.5
+
+    gateway_session_key: str = "agent:{agent}:main"
 
     socket_path: str = "/tmp/voice-pipeline.sock"
     log_file: str = "/tmp/voice-pipeline.log"

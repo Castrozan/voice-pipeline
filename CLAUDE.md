@@ -7,7 +7,7 @@ alwaysApply: true
 
 ## Project
 
-Real-time voice pipeline replacing hey-bot (6s chunks → whisper-cpp → OpenClaw → edge-tts → mpv, ~10s latency, no barge-in) with full-duplex conversational AI (~1-1.5s latency) for OpenClaw Claude agents.
+Real-time voice pipeline for OpenClaw Claude agents. Full-duplex conversational AI with wake word detection, VAD-gated STT, streaming LLM completion, and streaming TTS playback with barge-in support.
 
 Hexagonal architecture with ports/adapters pattern. Domain has zero external dependencies.
 
@@ -17,20 +17,19 @@ Hexagonal architecture with ports/adapters pattern. Domain has zero external dep
   Local                              Cloud
 ┌──────────────────────┐     ┌─────────────────────┐
 │ Mic (PipeWire)       │     │ Deepgram Nova-2     │
-│   ↓                  │     │ STT ~200ms stream   │
+│   ↓                  │     │ STT streaming       │
 │ VAD (Silero ONNX)    │────▶│       ↓             │
-│   ~1ms/frame         │     └──────┬──────────────┘
-│   ↓                  │            │ transcript
-│ Wake Word Detect     │     ┌──────▼──────────────┐
-│   (on transcript)    │     │ Anthropic Claude    │
-│                      │     │ via OpenClaw Gateway │
-│ OpenClaw Gateway ────│────▶│ (localhost:18789)   │
-│   (local daemon)     │     │ SSE ~500ms 1st tok  │
+│   ↓                  │     └──────┬──────────────┘
+│ Wake Word Detect     │            │ transcript
+│   (on transcript)    │     ┌──────▼──────────────┐
+│                      │     │ Anthropic Claude    │
+│ OpenClaw Gateway ────│────▶│ via OpenClaw Gateway │
+│   (local daemon)     │     │ SSE streaming       │
 │                      │     └──────┬──────────────┘
 │                      │            │ text stream
 │ Speaker ◀────────────│◀────┌──────▼──────────────┐
-│   ↓                  │     │ OpenAI tts-1        │
-│ VAD (barge-in) ──────│────▶│ TTS ~300ms 1st byte │
+│   ↓                  │     │ TTS (OpenAI/edge)   │
+│ VAD (barge-in) ──────│────▶│ streaming           │
 │                      │     └─────────────────────┘
 └──────────────────────┘
 ```
@@ -39,11 +38,11 @@ Hexagonal architecture with ports/adapters pattern. Domain has zero external dep
 
 1. Mic → VAD → speech detected → open Deepgram WebSocket → stream audio
 2. Deepgram returns real-time transcription
-3. Scan transcript for wake word (e.g., "jarvis", "robson")
-4. Wake word found → continue streaming until Deepgram endpointing signals utterance complete
-5. Send post-wake-word text to OpenClaw (Claude)
-6. Stream LLM response → stream to OpenAI TTS → play audio
-7. After AI responds → conversation window (~15s): any speech = follow-up (no wake word needed)
+3. Scan transcript for wake word
+4. Wake word found → continue streaming until endpointing signals utterance complete
+5. Send post-wake-word text to LLM
+6. Stream LLM response → stream to TTS → play audio
+7. After AI responds → conversation window: any speech = follow-up (no wake word needed)
 8. During AI speech → VAD active on echo-cancelled source → user speaks → barge-in: cancel LLM + TTS + playback
 9. Window expires with no speech → return to ambient wake word listening
 
@@ -59,27 +58,18 @@ AMBIENT → LISTENING → THINKING → SPEAKING → CONVERSING → AMBIENT
                     └──── barge-in ──────────────┘
 ```
 
-- AMBIENT: VAD + Deepgram running, scanning for wake word
-- LISTENING: Wake word detected (or in conversation window), collecting utterance via Deepgram endpointing
-- THINKING: Utterance complete, streaming to OpenClaw
-- SPEAKING: Playing TTS audio, VAD active for barge-in
-- CONVERSING: AI finished speaking, conversation window open, any speech triggers LISTENING
-
-### STT Modes
-
-- `vad-gated` (default): Deepgram connection opened only when VAD detects speech. Cheaper.
-- `always-streaming`: Continuous Deepgram connection. Lower latency for wake word detection.
+States defined in `src/domain/state.py`. Transitions enforced by the pipeline orchestrator.
 
 ## Tech Stack
 
 | Component | Technology | Location |
 |-----------|-----------|----------|
 | Audio I/O | `sounddevice` (PortAudio) | Local |
-| VAD | Silero ONNX v5 (~2MB, 32ms frames) | Local |
+| VAD | Silero ONNX v5 (16ms frames) | Local |
 | STT | Deepgram Nova-2 streaming WS | Cloud |
 | LLM | OpenClaw Gateway → Anthropic Claude | Local daemon → Cloud |
-| TTS | OpenAI `tts-1` streaming | Cloud |
-| Echo Cancel | PipeWire WebRTC AEC (`echo-cancel-source`) | Local |
+| TTS | OpenAI `tts-1` or `edge-tts` | Cloud |
+| Echo Cancel | PipeWire WebRTC AEC | Local |
 | IPC | Unix domain socket (JSON) | Local |
 
 ## Structure
@@ -94,30 +84,15 @@ from adapters.silero_vad import SileroVad
 Entry point: `src/__main__.py:main()`
 Factory wiring: `src/factory.py:create_pipeline()`
 
-## Key Files
-
-- `src/domain/pipeline.py` — State machine orchestrator, the core loop
-- `src/domain/speech_detector.py` — VAD + silence counting, produces SpeechEvents
-- `src/domain/conversation.py` — Multi-turn history, barge-in truncation
-- `src/domain/wake_word.py` — Keyword detection on transcript text
-- `src/domain/state.py` — State enum + transitions
-- `src/domain/events.py` — Domain events
-- `src/factory.py` — Creates all adapters, reads secrets, wires pipeline
-- `src/config.py` — Pydantic Settings, all `VOICE_PIPELINE_` env vars
-- `nix/module.nix` — Home Manager module for NixOS integration
-- `nix/package.nix` — Nix packaging via venv + pip install
+Ports are Protocol classes in `src/ports/`. Adapters are concrete implementations in `src/adapters/`. Domain logic in `src/domain/` has zero external dependencies.
 
 ## Ports (Protocol classes)
 
-```python
-class TranscriberPort(Protocol):
-    async def start_session(self) -> None: ...
-    async def send_audio(self, frame: bytes) -> None: ...
-    async def get_transcripts(self) -> AsyncIterator[TranscriptEvent]: ...
-    async def close_session(self) -> None: ...
+Defined in `src/ports/`. Read the actual Protocol definitions there for current signatures.
 
+```python
 class CompletionPort(Protocol):
-    async def stream(self, messages: list[Message], agent: str) -> AsyncIterator[str]: ...
+    async def stream(self, messages: list[dict[str, str]], agent: str) -> AsyncIterator[str]: ...
     async def cancel(self) -> None: ...
 
 class SynthesizerPort(Protocol):
@@ -127,29 +102,14 @@ class SynthesizerPort(Protocol):
 
 ## Configuration
 
-All settings via `VOICE_PIPELINE_` prefixed environment variables:
+All settings via `VOICE_PIPELINE_` prefixed environment variables. `src/config.py` is the single source of truth for all config options, defaults, and types — read it directly instead of relying on a table here.
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `GATEWAY_URL` | `http://localhost:18789` | OpenClaw gateway URL |
-| `GATEWAY_TOKEN_FILE` | `/run/agenix/openclaw-gateway-token` | Path to gateway token |
-| `DEFAULT_AGENT` | `jarvis` | Default agent name |
-| `STT_ENGINE` | `deepgram` | `deepgram` or `openai-whisper` |
-| `DEEPGRAM_API_KEY_FILE` | | Path to Deepgram API key |
-| `OPENAI_API_KEY_FILE` | | Path to OpenAI API key |
-| `TTS_VOICE` | `onyx` | Default TTS voice |
-| `MODEL` | `anthropic/claude-sonnet-4-5` | LLM model for OpenClaw |
-| `VAD_THRESHOLD` | `0.5` | Speech detection threshold |
-| `VAD_MIN_SILENCE_MS` | `300` | Silence duration to end speech |
-| `FRAME_DURATION_MS` | `16` | Audio frame size (Silero VAD v5 required) |
-| `SAMPLE_RATE` | `16000` | Audio sample rate |
-| `WAKE_WORDS` | `["jarvis"]` | JSON list of wake words |
-| `CAPTURE_DEVICE` | `echo-cancel-source` | PipeWire capture device |
-| `BARGE_IN_ENABLED` | `true` | Allow interrupting AI speech |
-| `CONVERSATION_WINDOW_SECONDS` | `15.0` | Follow-up window without wake word |
-| `MAX_HISTORY_TURNS` | `20` | Max conversation turns kept |
-| `AGENT_VOICES` | `{}` | JSON map of agent name to TTS voice |
-| `SOCKET_PATH` | `/tmp/voice-pipeline.sock` | Unix control socket path |
+Key patterns:
+- Secret files (API keys, tokens) use `*_file` suffix with `read_secret()` helper
+- Per-agent overrides via JSON dict configs (voices, languages)
+- Audio params (sample rate, frame duration, VAD thresholds) tuned for Silero VAD v5
+- LLM completion supports multiple engines (openclaw, anthropic, cli)
+- TTS supports multiple engines (openai, edge-tts)
 
 ## Testing
 
@@ -158,14 +118,14 @@ uv run pytest tests/ -v
 ```
 
 All domain tests are pure (no I/O). Fakes in `tests/conftest.py`.
-Frame size is 16ms (256 samples at 16kHz) — Silero VAD v5 requires this for correct speech detection.
+Silero VAD v5 requires exactly 256 samples (16ms at 16kHz) per frame — all test frame generation respects this.
 
 ### Audio Recording Workflow
 
 Recordings live in `tests/recordings/{mic_type}/` and are committed to git for reproducible tests.
 Tool: `tests/record_test_audio.py`
 
-**Before recording:** Stop the voice pipeline (`Ctrl+C` in `vc-pipe-exec` tmux session) to free the audio device. Both the pipeline and the recording tool use `echo-cancel-source`.
+**Before recording:** Stop the voice pipeline (`Ctrl+C` in `vc-pipe-exec` tmux session) to free the audio device. Both the pipeline and the recording tool use the echo-cancel source.
 
 **Adding new clips:** Define clips in `tests/record_test_audio.py` CLIPS dict with `(instruction, duration_seconds)`. Agent designs the exact script the user must say, including "Apple" prefix when needed to work around first-word-eating on echo-cancel source.
 
@@ -174,7 +134,7 @@ Tool: `tests/record_test_audio.py`
 2. User says "ok" or "go" to start recording
 3. Agent runs `uv run python tests/record_test_audio.py <clip_name> --mic <type>` (3s countdown then records)
 4. Agent runs `uv run python tests/record_test_audio.py transcribe <mic/clip>` to verify with Whisper
-5. **Transcription must match the script exactly** (word for word). If Whisper drops or changes words, re-record. VAD stats (starts, ends, speech%) are informational but transcription accuracy is the gate.
+5. **Transcription must match the script exactly** (word for word). If Whisper drops or changes words, re-record. VAD stats are informational but transcription accuracy is the gate.
 6. If transcription matches → move to next clip. If not → re-record same clip.
 7. After all clips recorded → commit to git → write/update tests.
 
@@ -191,28 +151,7 @@ After all clips are recorded, `uv run pytest tests/test_recorded_audio.py -v` ru
 
 ## Dotfiles Integration
 
-Separate repo, included as a flake input in dotfiles:
-
-```nix
-voice-pipeline.url = "github:castrozan/voice-pipeline";
-```
-
-Home Manager module at `nix/module.nix` provides `services.voice-pipeline` options and a systemd user service.
-
-User config example:
-
-```nix
-services.voice-pipeline = {
-  enable = true;
-  defaultAgent = "jarvis";
-  wakeWords = [ "jarvis" "robson" "jenny" ];
-  agents.jarvis.openaiVoice = "onyx";
-  agents.robson.openaiVoice = "echo";
-  agents.jenny.openaiVoice = "nova";
-};
-```
-
-Nix packaging uses venv + pip install pattern (see `nix/package.nix`).
+Separate repo, included as a flake input in dotfiles. Home Manager module at `nix/module.nix` provides `services.voice-pipeline` options and a systemd user service. Nix packaging uses venv + pip install pattern (see `nix/package.nix`).
 
 Reference files in dotfiles repo:
 - `home/modules/hey-bot.nix` — gateway interaction, systemd service, TTS flow

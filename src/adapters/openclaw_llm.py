@@ -14,10 +14,12 @@ class OpenClawCompletion:
         gateway_url: str,
         token: str,
         model: str = "anthropic/claude-sonnet-4-5",
+        session_key: str = "",
     ) -> None:
         self._gateway_url = gateway_url.rstrip("/")
         self._token = token
         self._model = model
+        self._session_key = session_key
         self._client: httpx.AsyncClient | None = None
         self._cancel_event = asyncio.Event()
 
@@ -33,8 +35,12 @@ class OpenClawCompletion:
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self._token}",
-            "x-clawdbot-agent-id": agent,
+            "x-openclaw-agent-id": agent,
         }
+
+        resolved_session_key = self._session_key.replace("{agent}", agent)
+        if resolved_session_key:
+            headers["x-openclaw-session-key"] = resolved_session_key
 
         payload = {
             "model": self._model,
@@ -60,6 +66,7 @@ class OpenClawCompletion:
 
                     try:
                         import json
+
                         data = json.loads(sse.data)
                         delta = data.get("choices", [{}])[0].get("delta", {})
                         content = delta.get("content", "")
