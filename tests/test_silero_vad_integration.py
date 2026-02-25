@@ -46,8 +46,8 @@ def speech_pcm():
 
 
 class TestSileroVadWithRealSpeech:
-    def test_frame_size_must_be_512_samples(self):
-        assert REQUIRED_FRAME_SIZE == 512
+    def test_frame_size_must_be_256_samples(self):
+        assert REQUIRED_FRAME_SIZE == 256
 
     def test_detects_speech_in_real_audio(self, silero_vad, speech_pcm):
         num_frames = len(speech_pcm) // REQUIRED_FRAME_SIZE

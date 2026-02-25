@@ -37,7 +37,7 @@ class VoicePipeline:
         pre_buffer_ms: int = 300,
         barge_in_min_speech_ms: int = 200,
         barge_in_speech_ratio: float = 0.5,
-        frame_duration_ms: int = 32,
+        frame_duration_ms: int = 16,
         system_prompt: str = "",
         use_gateway_session: bool = False,
     ) -> None:

@@ -29,7 +29,7 @@ class VoicePipelineConfig(BaseSettings):
     capture_device: str = ""
     capture_gain: float = 2.0
     sample_rate: int = 16000
-    frame_duration_ms: int = 32
+    frame_duration_ms: int = 16
 
     barge_in_enabled: bool = True
     barge_in_min_speech_ms: int = 200

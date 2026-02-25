@@ -13,7 +13,7 @@ from ports.transcriber import TranscriptEvent
 
 
 SAMPLE_RATE = 16000
-FRAME_DURATION_MS = 32
+FRAME_DURATION_MS = 16
 FRAME_SIZE = int(SAMPLE_RATE * FRAME_DURATION_MS / 1000)
 
 
