@@ -4,7 +4,7 @@ import time
 from collections.abc import AsyncIterator
 
 from deepgram import AsyncDeepgramClient
-from deepgram.extensions.types.sockets.listen_v1_results_event import ListenV1ResultsEvent
+from deepgram.listen.v1 import ListenV1Results
 from deepgram.listen.v1.socket_client import EventType
 
 from ports.transcriber import TranscriptEvent
@@ -56,7 +56,10 @@ class DeepgramStreamingTranscriber:
                 await self._socket._send(frame)
             except Exception:
                 now = time.monotonic()
-                if now - self._last_send_warning_time >= SEND_AUDIO_WARNING_INTERVAL_SECONDS:
+                if (
+                    now - self._last_send_warning_time
+                    >= SEND_AUDIO_WARNING_INTERVAL_SECONDS
+                ):
                     if self._suppressed_send_warnings > 0:
                         logger.warning(
                             "Failed to send audio to Deepgram (%d warnings suppressed)",
@@ -98,7 +101,7 @@ class DeepgramStreamingTranscriber:
             logger.info("Deepgram session closed")
 
     async def _on_message(self, message) -> None:
-        if not isinstance(message, ListenV1ResultsEvent):
+        if not isinstance(message, ListenV1Results):
             return
         try:
             transcript = message.channel.alternatives[0].transcript
