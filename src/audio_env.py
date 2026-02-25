@@ -84,7 +84,9 @@ def format_environment_report(environment: AudioEnvironment) -> str:
     lines.append("Sources:")
     for source in environment.sources:
         default_marker = " *" if source.is_default else ""
-        volume_info = f" [vol: {source.volume:.2f}]" if source.volume is not None else ""
+        volume_info = (
+            f" [vol: {source.volume:.2f}]" if source.volume is not None else ""
+        )
         lines.append(f"  {source.node_id}. {source.name}{volume_info}{default_marker}")
     lines.append("")
 
@@ -118,7 +120,9 @@ def _run_wpctl_status() -> str | None:
     try:
         result = subprocess.run(
             ["wpctl", "status"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         if result.returncode != 0:
             logger.warning("wpctl status failed: %s", result.stderr.strip())
@@ -142,11 +146,16 @@ def _parse_wpctl_status(output: str) -> AudioEnvironment:
     devices = _parse_devices(audio_section_lines)
     sinks = _parse_nodes(audio_section_lines, "Sinks:")
     sources = _parse_nodes(audio_section_lines, "Sources:")
+    filter_sources, filter_sinks = _parse_filter_nodes(audio_section_lines)
+    sources.extend(filter_sources)
+    sinks.extend(filter_sinks)
     streams = _parse_streams(audio_section_lines)
 
     echo_cancel = _detect_echo_cancel_topology(streams)
 
-    default_configured_sink, default_configured_source = _parse_default_configured_nodes(settings_section_lines)
+    default_configured_sink, default_configured_source = (
+        _parse_default_configured_nodes(settings_section_lines)
+    )
 
     return AudioEnvironment(
         pipewire_version=pipewire_version,
@@ -177,7 +186,11 @@ def _extract_section(lines: list[str], section_name: str) -> list[str]:
             continue
 
         if inside_section:
-            if stripped and not stripped.startswith(("├", "│", "└", " ")) and not line.startswith(" "):
+            if (
+                stripped
+                and not stripped.startswith(("├", "│", "└", " "))
+                and not line.startswith(" ")
+            ):
                 break
             section_lines.append(line)
 
@@ -265,6 +278,50 @@ def _parse_node_line(line: str) -> AudioNode | None:
     )
 
 
+def _parse_filter_nodes(
+    section_lines: list[str],
+) -> tuple[list[AudioNode], list[AudioNode]]:
+    filter_sources: list[AudioNode] = []
+    filter_sinks: list[AudioNode] = []
+    inside_filters = False
+
+    for line in section_lines:
+        cleaned = _clean_tree_prefix(line)
+        stripped = cleaned.strip()
+
+        if stripped == "Filters:":
+            inside_filters = True
+            continue
+
+        if inside_filters:
+            if stripped == "":
+                continue
+            if (
+                stripped.endswith(":")
+                and not stripped[0].isdigit()
+                and "[" not in stripped
+            ):
+                inside_filters = False
+                continue
+
+            node_with_role_match = re.match(
+                r"(\d+)\.\s+(.+?)\s+\[(Audio/Source|Audio/Sink)\]", stripped
+            )
+            if node_with_role_match:
+                node = AudioNode(
+                    node_id=int(node_with_role_match.group(1)),
+                    name=node_with_role_match.group(2).strip(),
+                    is_default=False,
+                    volume=None,
+                )
+                if node_with_role_match.group(3) == "Audio/Source":
+                    filter_sources.append(node)
+                else:
+                    filter_sinks.append(node)
+
+    return filter_sources, filter_sinks
+
+
 def _parse_streams(section_lines: list[str]) -> list[AudioStream]:
     streams = []
     inside_streams = False
@@ -296,7 +353,12 @@ def _parse_streams(section_lines: list[str]) -> list[AudioStream]:
 
         linked_port_match = re.match(r"(\d+)\.\s+(\S+)\s+([<>])\s+(.+)", stripped)
 
-        if linked_port_match and current_stream is not None and stream_indent is not None and line_indent > stream_indent:
+        if (
+            linked_port_match
+            and current_stream is not None
+            and stream_indent is not None
+            and line_indent > stream_indent
+        ):
             direction = "input" if linked_port_match.group(3) == "<" else "output"
             port = StreamPort(
                 port_id=int(linked_port_match.group(1)),
@@ -318,7 +380,9 @@ def _parse_streams(section_lines: list[str]) -> list[AudioStream]:
     return streams
 
 
-def _detect_echo_cancel_topology(streams: list[AudioStream]) -> EchoCancelTopology | None:
+def _detect_echo_cancel_topology(
+    streams: list[AudioStream],
+) -> EchoCancelTopology | None:
     capture_source = ""
     playback_sink = ""
     source_node = ""
