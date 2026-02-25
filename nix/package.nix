@@ -1,7 +1,9 @@
 { pkgs, ... }:
 let
   python = pkgs.python312;
+  uv = pkgs.uv;
   prefix = "$HOME/.local/share/voice-pipeline-venv";
+  sourceStorePath = "${../.}";
 
   voicePipeline = pkgs.writeShellScriptBin "voice-pipeline" ''
     export PATH="${python}/bin:${pkgs.portaudio}/lib:''${PATH:+:$PATH}"
@@ -9,17 +11,22 @@ let
       pkgs.lib.makeLibraryPath [ pkgs.stdenv.cc.cc.lib ]
     }:''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
     VENV="${prefix}"
+    CURRENT_SOURCE="${sourceStorePath}"
 
     if [ ! -d "$VENV" ]; then
       echo "[voice-pipeline] Creating virtualenv..." >&2
-      ${python}/bin/python -m venv "$VENV" >&2
+      ${uv}/bin/uv venv --python "${python}/bin/python" "$VENV" >&2
     fi
 
-    if [ ! -f "$VENV/.installed" ] || [ "$VENV/.installed" -ot "${../pyproject.toml}" ]; then
-      echo "[voice-pipeline] Installing dependencies..." >&2
-      "$VENV/bin/pip" install --quiet --upgrade pip >&2
-      "$VENV/bin/pip" install --quiet "${../.}" >&2
-      touch "$VENV/.installed"
+    INSTALLED_SOURCE=""
+    if [ -f "$VENV/.installed-source" ]; then
+      INSTALLED_SOURCE=$(cat "$VENV/.installed-source")
+    fi
+
+    if [ "$INSTALLED_SOURCE" != "$CURRENT_SOURCE" ]; then
+      echo "[voice-pipeline] Installing dependencies (uv)..." >&2
+      ${uv}/bin/uv pip install --python "$VENV/bin/python" "$CURRENT_SOURCE" >&2
+      echo "$CURRENT_SOURCE" > "$VENV/.installed-source"
     fi
 
     exec "$VENV/bin/voice-pipeline" "$@"
