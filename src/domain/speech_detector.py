@@ -19,6 +19,10 @@ class SpeechEvent(Enum):
 
 
 class SpeechDetector:
+    SAMPLE_RATE = 16000
+    BYTES_PER_SAMPLE = 2
+    VAD_WARMUP_FRAMES = 10
+
     def __init__(
         self,
         vad: VadPort,
@@ -34,6 +38,10 @@ class SpeechDetector:
         self._frame_count = 0
         self._log_interval_silence = int(500 / frame_duration_ms)
         self._log_interval_speech = int(200 / frame_duration_ms)
+        self._frame_size_samples = int(self.SAMPLE_RATE * frame_duration_ms / 1000)
+        self._silence_frame_bytes = b"\x00" * (
+            self._frame_size_samples * self.BYTES_PER_SAMPLE
+        )
 
     @property
     def speech_active(self) -> bool:
@@ -85,3 +93,12 @@ class SpeechDetector:
         self._speech_active = False
         self._silence_frame_count = 0
         self._frame_count = 0
+
+    def reset_after_playback(self) -> None:
+        self.reset()
+        self._vad.reset()
+        for _ in range(self.VAD_WARMUP_FRAMES):
+            self._vad.process_frame(self._silence_frame_bytes)
+        logger.info(
+            "VAD reset and warmed up with %d silence frames", self.VAD_WARMUP_FRAMES
+        )

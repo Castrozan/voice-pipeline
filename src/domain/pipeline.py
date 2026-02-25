@@ -363,7 +363,7 @@ class VoicePipeline:
             await self._playback.drain()
 
             if self._state == PipelineState.SPEAKING:
-                self._speech_detector.reset()
+                self._speech_detector.reset_after_playback()
                 self._transition_to(PipelineState.CONVERSING)
                 self._start_conversation_window()
 
