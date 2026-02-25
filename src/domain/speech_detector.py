@@ -44,11 +44,7 @@ class SpeechDetector:
         probability = self._vad.process_frame(frame)
         is_speech = probability >= self._threshold
 
-        log_interval = (
-            self._log_interval_speech
-            if self._speech_active
-            else self._log_interval_silence
-        )
+        log_interval = self._log_interval_speech if self._speech_active else self._log_interval_silence
         if self._frame_count % log_interval == 0:
             amplitude = 0
             if len(frame) >= 2:
@@ -56,10 +52,7 @@ class SpeechDetector:
                 amplitude = max(abs(s) for s in samples)
             logger.debug(
                 "VAD prob=%.4f threshold=%.2f speech=%s amp=%d",
-                probability,
-                self._threshold,
-                is_speech,
-                amplitude,
+                probability, self._threshold, is_speech, amplitude,
             )
 
         if is_speech:
@@ -71,10 +64,7 @@ class SpeechDetector:
             return SpeechEvent.SPEECH_CONTINUE
 
         self._silence_frame_count += 1
-        if (
-            self._speech_active
-            and self._silence_frame_count >= self._silence_frames_required
-        ):
+        if self._speech_active and self._silence_frame_count >= self._silence_frames_required:
             self._speech_active = False
             logger.info("Speech ended (silence frames=%d)", self._silence_frame_count)
             return SpeechEvent.SPEECH_END
@@ -84,3 +74,5 @@ class SpeechDetector:
     def reset(self) -> None:
         self._speech_active = False
         self._silence_frame_count = 0
+        self._frame_count = 0
+        self._vad.reset()
