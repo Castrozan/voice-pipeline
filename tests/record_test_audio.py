@@ -15,7 +15,7 @@ from domain.speech_detector import SpeechDetector
 
 RECORDINGS_DIR = Path(__file__).parent / "recordings"
 SAMPLE_RATE = 16000
-FRAME_DURATION_MS = 16
+FRAME_DURATION_MS = 32
 FRAME_SAMPLES = int(SAMPLE_RATE * FRAME_DURATION_MS / 1000)
 
 CLIPS = {

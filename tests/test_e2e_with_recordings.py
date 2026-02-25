@@ -26,7 +26,7 @@ from domain.state import PipelineState
 
 RECORDINGS_DIR = Path(__file__).parent / "recordings"
 SAMPLE_RATE = 16000
-FRAME_DURATION_MS = 16
+FRAME_DURATION_MS = 32
 FRAME_SIZE = int(SAMPLE_RATE * FRAME_DURATION_MS / 1000)
 BYTES_PER_FRAME = FRAME_SIZE * 2
 
@@ -35,7 +35,7 @@ class WavFileCapture:
     def __init__(
         self,
         wav_path: Path,
-        frame_duration_ms: int = 16,
+        frame_duration_ms: int = 32,
         post_silence_seconds: float = 5.0,
     ) -> None:
         self._wav_path = wav_path
@@ -71,7 +71,9 @@ class WavFileCapture:
             await asyncio.sleep(self._frame_delay)
 
         silence_frame = b"\x00" * BYTES_PER_FRAME
-        silence_frame_count = int(self._post_silence_seconds * 1000 / self._frame_duration_ms)
+        silence_frame_count = int(
+            self._post_silence_seconds * 1000 / self._frame_duration_ms
+        )
         for _ in range(silence_frame_count):
             yield silence_frame
             await asyncio.sleep(self._frame_delay)
@@ -240,11 +242,14 @@ def build_e2e_pipeline(
     return pipeline, playback
 
 
-async def run_pipeline_with_timeout(pipeline: VoicePipeline, timeout: float = 45.0) -> None:
+async def run_pipeline_with_timeout(
+    pipeline: VoicePipeline, timeout: float = 45.0
+) -> None:
     task = asyncio.create_task(pipeline.run())
     try:
         await asyncio.wait_for(
-            _wait_for_pipeline_idle(pipeline, task), timeout=timeout,
+            _wait_for_pipeline_idle(pipeline, task),
+            timeout=timeout,
         )
     except asyncio.TimeoutError:
         pass
@@ -257,13 +262,22 @@ async def run_pipeline_with_timeout(pipeline: VoicePipeline, timeout: float = 45
                 pass
 
 
-async def _wait_for_pipeline_idle(pipeline: VoicePipeline, run_task: asyncio.Task) -> None:
+async def _wait_for_pipeline_idle(
+    pipeline: VoicePipeline, run_task: asyncio.Task
+) -> None:
     saw_processing = False
     while not run_task.done():
         await asyncio.sleep(0.1)
-        if pipeline.state in (PipelineState.LISTENING, PipelineState.THINKING, PipelineState.SPEAKING):
+        if pipeline.state in (
+            PipelineState.LISTENING,
+            PipelineState.THINKING,
+            PipelineState.SPEAKING,
+        ):
             saw_processing = True
-        if saw_processing and pipeline.state in (PipelineState.CONVERSING, PipelineState.AMBIENT):
+        if saw_processing and pipeline.state in (
+            PipelineState.CONVERSING,
+            PipelineState.AMBIENT,
+        ):
             await asyncio.sleep(0.5)
             return
 
@@ -277,7 +291,11 @@ class TestE2EWithRecordings:
         wav_path = require_recording("wake_jarvis_weather")
 
         pipeline, playback = build_e2e_pipeline(
-            wav_path, config, gateway_token, openai_api_key, deepgram_api_key,
+            wav_path,
+            config,
+            gateway_token,
+            openai_api_key,
+            deepgram_api_key,
         )
 
         await run_pipeline_with_timeout(pipeline)
@@ -286,7 +304,9 @@ class TestE2EWithRecordings:
             PipelineState.SPEAKING,
             PipelineState.CONVERSING,
             PipelineState.AMBIENT,
-        ), f"Expected SPEAKING/CONVERSING/AMBIENT after response, got {pipeline.state.name}"
+        ), (
+            f"Expected SPEAKING/CONVERSING/AMBIENT after response, got {pipeline.state.name}"
+        )
 
         assert playback.total_bytes > 0, "Expected TTS audio output but got nothing"
         assert len(playback.played_chunks) >= 1, "Expected at least one TTS chunk"
@@ -299,7 +319,11 @@ class TestE2EWithRecordings:
         wav_path = require_recording("wake_robson_command")
 
         pipeline, playback = build_e2e_pipeline(
-            wav_path, config, gateway_token, openai_api_key, deepgram_api_key,
+            wav_path,
+            config,
+            gateway_token,
+            openai_api_key,
+            deepgram_api_key,
         )
 
         await run_pipeline_with_timeout(pipeline)
@@ -313,12 +337,18 @@ class TestE2EWithRecordings:
         wav_path = require_recording("silence_3s")
 
         pipeline, playback = build_e2e_pipeline(
-            wav_path, config, gateway_token, openai_api_key, deepgram_api_key,
+            wav_path,
+            config,
+            gateway_token,
+            openai_api_key,
+            deepgram_api_key,
         )
 
         await run_pipeline_with_timeout(pipeline, timeout=15.0)
 
-        assert pipeline.state == PipelineState.AMBIENT, f"Expected AMBIENT for silence, got {pipeline.state.name}"
+        assert pipeline.state == PipelineState.AMBIENT, (
+            f"Expected AMBIENT for silence, got {pipeline.state.name}"
+        )
         assert playback.total_bytes == 0, "Expected no TTS output for silence"
 
     @pytest.mark.asyncio
@@ -328,7 +358,11 @@ class TestE2EWithRecordings:
         wav_path = require_recording("wake_jarvis_weather")
 
         pipeline, playback = build_e2e_pipeline(
-            wav_path, config, gateway_token, openai_api_key, deepgram_api_key,
+            wav_path,
+            config,
+            gateway_token,
+            openai_api_key,
+            deepgram_api_key,
         )
 
         await run_pipeline_with_timeout(pipeline)
@@ -338,8 +372,12 @@ class TestE2EWithRecordings:
         assistant_messages = [m for m in messages if m["role"] == "assistant"]
 
         if playback.total_bytes > 0:
-            assert len(user_messages) >= 1, "Expected at least one user message in history"
-            assert len(assistant_messages) >= 1, "Expected at least one assistant message in history"
+            assert len(user_messages) >= 1, (
+                "Expected at least one user message in history"
+            )
+            assert len(assistant_messages) >= 1, (
+                "Expected at least one assistant message in history"
+            )
 
     @pytest.mark.asyncio
     async def test_tts_output_is_valid_pcm(self):
@@ -348,7 +386,11 @@ class TestE2EWithRecordings:
         wav_path = require_recording("wake_jarvis_weather")
 
         pipeline, playback = build_e2e_pipeline(
-            wav_path, config, gateway_token, openai_api_key, deepgram_api_key,
+            wav_path,
+            config,
+            gateway_token,
+            openai_api_key,
+            deepgram_api_key,
         )
 
         await run_pipeline_with_timeout(pipeline)
@@ -369,12 +411,18 @@ class TestE2EWithRecordings:
         wav_path = require_recording("continuous_ramble")
 
         pipeline, playback = build_e2e_pipeline(
-            wav_path, config, gateway_token, openai_api_key, deepgram_api_key,
+            wav_path,
+            config,
+            gateway_token,
+            openai_api_key,
+            deepgram_api_key,
         )
 
         await run_pipeline_with_timeout(pipeline, timeout=20.0)
 
-        assert playback.total_bytes == 0, "Expected no TTS output for speech without wake word"
+        assert playback.total_bytes == 0, (
+            "Expected no TTS output for speech without wake word"
+        )
 
 
 def build_audible_e2e_pipeline(
@@ -443,7 +491,11 @@ class TestAudibleE2E:
         wav_path = require_recording("wake_robson_command")
 
         pipeline, playback = build_audible_e2e_pipeline(
-            wav_path, config, gateway_token, openai_api_key, deepgram_api_key,
+            wav_path,
+            config,
+            gateway_token,
+            openai_api_key,
+            deepgram_api_key,
         )
 
         await run_pipeline_with_timeout(pipeline, timeout=90.0)

@@ -65,7 +65,7 @@ States defined in `src/domain/state.py`. Transitions enforced by the pipeline or
 | Component | Technology | Location |
 |-----------|-----------|----------|
 | Audio I/O | `sounddevice` (PortAudio) | Local |
-| VAD | Silero ONNX v5 (16ms frames) | Local |
+| VAD | Silero ONNX v5 (32ms frames) | Local |
 | STT | Deepgram Nova-2 streaming WS | Cloud |
 | LLM | OpenClaw Gateway → Anthropic Claude | Local daemon → Cloud |
 | TTS | OpenAI `tts-1` or `edge-tts` | Cloud |
@@ -118,7 +118,7 @@ uv run pytest tests/ -v
 ```
 
 All domain tests are pure (no I/O). Fakes in `tests/conftest.py`.
-Silero VAD v5 requires exactly 256 samples (16ms at 16kHz) per frame — all test frame generation respects this.
+Silero VAD v5 requires exactly 512 samples (32ms at 16kHz) per frame — all test frame generation respects this.
 
 ### Audio Recording Workflow
 
