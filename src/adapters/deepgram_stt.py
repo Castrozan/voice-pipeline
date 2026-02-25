@@ -4,8 +4,12 @@ import time
 from collections.abc import AsyncIterator
 
 from deepgram import AsyncDeepgramClient
-from deepgram.listen.v1 import ListenV1Results
 from deepgram.listen.v1.socket_client import EventType
+
+try:
+    from deepgram.listen.v1 import ListenV1Results as ListenV1ResultsType
+except ImportError:
+    from deepgram.listen.v1.socket_client import ListenV1ResultsEvent as ListenV1ResultsType
 
 from ports.transcriber import TranscriptEvent
 
@@ -101,7 +105,7 @@ class DeepgramStreamingTranscriber:
             logger.info("Deepgram session closed")
 
     async def _on_message(self, message) -> None:
-        if not isinstance(message, ListenV1Results):
+        if not isinstance(message, ListenV1ResultsType):
             return
         try:
             transcript = message.channel.alternatives[0].transcript
